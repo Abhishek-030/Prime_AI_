@@ -3,19 +3,19 @@ Personal_AI_Assistant/
 ├── main.py                 # Entry point
 │
 ├── config/                 # Configuration files
-│   ├── config.py
+│   ├── config.py            
 │   ├── api_keys.env
 │
-├── core/                   # AI brain logic
-│   ├── ai_engine.py
-│   ├── intent_detector.py
+├── core/                   # AI brain logic    //23
+│   ├── ai_engine.py        
+│   ├── intent_detector.py 
 │   ├── command_router.py
 │
-├── voice/                  # Voice handling
+├── voice/                  # Voice handling    //30
 │   ├── speech_to_text.py
 │   ├── text_to_speech.py
 │
-├── modules/                # Main features
+├── modules/                # Main features    /23
 │   ├── file_manager.py
 │   ├── browser_manager.py
 │   ├── scheduler.py
@@ -23,12 +23,12 @@ Personal_AI_Assistant/
 │   ├── coding_assistant.py
 │   ├── update_checker.py
 │
-├── ui/                     # User interface
+├── ui/                     # User interface     //30
 │   ├── main_window.py
 │   ├── mic_button.py
 │   ├── chat_interface.py
 │
-├── database/               # Data storage
+├── database/               # Data storage    
 │   ├── assistant.db
 │   ├── db_manager.py
 │
@@ -36,14 +36,14 @@ Personal_AI_Assistant/
 │   ├── logger.py
 │   ├── helpers.py
 │
-├── tests/                  # Testing files
+├── tests/                  # Testing files    //30
 │   ├── test_voice.py
 │   ├── test_ai.py
 │
-├── requirements.txt        # Dependencies
-├── README.md               # Project overview
+├── requirements.txt        # Dependencies        //30
+├── README.md               # Project overview    //30
 │
-└── report/                 # Documentation
+└── report/                 # Documentation    //30
     ├── project_report.docx
     ├── architecture_diagram.png
     ├── flowchart.png
