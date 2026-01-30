@@ -1,0 +1,49 @@
+Personal_AI_Assistant/
+│
+├── main.py                 # Entry point
+│
+├── config/                 # Configuration files
+│   ├── config.py
+│   ├── api_keys.env
+│
+├── core/                   # AI brain logic
+│   ├── ai_engine.py
+│   ├── intent_detector.py
+│   ├── command_router.py
+│
+├── voice/                  # Voice handling
+│   ├── speech_to_text.py
+│   ├── text_to_speech.py
+│
+├── modules/                # Main features
+│   ├── file_manager.py
+│   ├── browser_manager.py
+│   ├── scheduler.py
+│   ├── study_helper.py
+│   ├── coding_assistant.py
+│   ├── update_checker.py
+│
+├── ui/                     # User interface
+│   ├── main_window.py
+│   ├── mic_button.py
+│   ├── chat_interface.py
+│
+├── database/               # Data storage
+│   ├── assistant.db
+│   ├── db_manager.py
+│
+├── utils/                  # Helper utilities
+│   ├── logger.py
+│   ├── helpers.py
+│
+├── tests/                  # Testing files
+│   ├── test_voice.py
+│   ├── test_ai.py
+│
+├── requirements.txt        # Dependencies
+├── README.md               # Project overview
+│
+└── report/                 # Documentation
+    ├── project_report.docx
+    ├── architecture_diagram.png
+    ├── flowchart.png
