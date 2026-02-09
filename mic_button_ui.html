@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prime AI - Microphone Button UI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'AQUIRE', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: transparent;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        @font-face {
+            font-family: 'AQUIRE';
+            src: url('data:font/woff2;base64,') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 500px;
+            height: 500px;
+            background: rgba(30, 58, 138, 0.3);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-radius: 30px;
+            border: 1px solid rgba(37, 99, 235, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .container.listening-mode {
+            background: transparent;
+            backdrop-filter: blur(0px);
+            border: none;
+            box-shadow: none;
+        }
+
+        .container.listening-mode .title,
+        .container.listening-mode .subtitle,
+        .container.listening-mode .status-text,
+        .container.listening-mode .controls,
+        .container.listening-mode .keyboard-hint {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .title {
+            color: #2563eb;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            animation: fadeInDown 0.8s ease;
+            letter-spacing: 2px;
+            transition: opacity 0.3s ease;
+            font-family: 'Orbitron', monospace;
+        }
+
+        .title.animate {
+            animation: titleWave 2s ease-in-out infinite;
+        }
+
+        @keyframes titleWave {
+            0%, 100% {
+                transform: translateY(0px);
+                text-shadow: 2px 2px 4px rgba(37, 99, 235, 0.3);
+            }
+            25% {
+                transform: translateY(-5px);
+                text-shadow: 2px 4px 8px rgba(37, 99, 235, 0.5);
+            }
+            50% {
+                transform: translateY(0px);
+                text-shadow: 2px 2px 4px rgba(37, 99, 235, 0.3);
+            }
+            75% {
+                transform: translateY(-3px);
+                text-shadow: 2px 3px 6px rgba(37, 99, 235, 0.4);
+            }
+        }
+
+        .subtitle {
+            color: #2563eb;
+            font-size: 0.85rem;
+            margin-bottom: 2.5rem;
+            animation: fadeInUp 0.8s ease;
+            font-weight: 400;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Microphone Button Container */
+        .mic-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        /* Pulse Rings */
+        .pulse-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            border: 2px solid rgba(37, 99, 235, 0.4);
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            opacity: 0;
+        }
+
+        .pulse-ring:nth-child(2) {
+            animation-delay: 0.5s;
+        }
+
+        .pulse-ring:nth-child(3) {
+            animation-delay: 1s;
+        }
+
+        /* Main Microphone Button */
+        .mic-button {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+        }
+
+        .mic-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.4);
+        }
+
+        .mic-button:active {
+            transform: scale(0.95);
+        }
+
+        /* Microphone Icon */
+        .mic-icon {
+            width: 40px;
+            height: 40px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .mic-icon svg {
+            width: 100%;
+            height: 100%;
+            fill: white;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+
+        /* Active State */
+        .mic-button.active {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            animation: activeGlow 1.5s ease-in-out infinite;
+        }
+
+        .mic-button.active .mic-icon {
+            animation: micWave 1.2s ease-in-out infinite;
+        }
+
+        @keyframes micWave {
+            0%, 100% {
+                transform: scale(1);
+            }
+            25% {
+                transform: scale(1.08);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            75% {
+                transform: scale(1.08);
+            }
+        }
+
+        /* Status Text */
+        .status-text {
+            margin-top: 2.5rem;
+            color: #2563eb;
+            font-size: 0.95rem;
+            font-weight: 400;
+            min-height: 25px;
+            animation: fadeIn 0.5s ease;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Audio Visualizer */
+        .audio-visualizer {
+            display: none;
+            justify-content: center;
+            align-items: flex-end;
+            gap: 3px;
+            margin-top: 2rem;
+            height: 60px;
+        }
+
+        .audio-visualizer.active {
+            display: flex;
+        }
+
+        .bar {
+            width: 4px;
+            background: linear-gradient(to top, #4facfe, #00f2fe);
+            border-radius: 2px;
+            animation: audioBar 0.8s ease-in-out infinite;
+        }
+
+        .bar:nth-child(1) { animation-delay: 0s; }
+        .bar:nth-child(2) { animation-delay: 0.1s; }
+        .bar:nth-child(3) { animation-delay: 0.2s; }
+        .bar:nth-child(4) { animation-delay: 0.3s; }
+        .bar:nth-child(5) { animation-delay: 0.4s; }
+        .bar:nth-child(6) { animation-delay: 0.3s; }
+        .bar:nth-child(7) { animation-delay: 0.2s; }
+        .bar:nth-child(8) { animation-delay: 0.1s; }
+
+        /* Processing State */
+        .processing-ring {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 120px;
+            height: 120px;
+            border: 3px solid transparent;
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .processing-ring.active {
+            display: block;
+        }
+
+        /* Keyboard Shortcut Hint */
+        .keyboard-hint {
+            position: absolute;
+            bottom: -70px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #2563eb;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            animation: fadeIn 1s ease 0.5s both;
+            transition: opacity 0.3s ease;
+        }
+
+        .key {
+            display: inline-block;
+            padding: 3px 8px;
+            background: rgba(37, 99, 235, 0.15);
+            border-radius: 6px;
+            margin: 0 2px;
+            font-weight: 500;
+            border: 1px solid rgba(37, 99, 235, 0.3);
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0% {
+                transform: translate(-50%, -50%) scale(0.8);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        @keyframes activeGlow {
+            0%, 100% {
+                box-shadow: 0 10px 40px rgba(79, 172, 254, 0.5),
+                           0 0 20px rgba(79, 172, 254, 0.3);
+            }
+            50% {
+                box-shadow: 0 15px 50px rgba(79, 172, 254, 0.7),
+                           0 0 30px rgba(79, 172, 254, 0.5);
+            }
+        }
+
+        @keyframes audioBar {
+            0%, 100% {
+                height: 15px;
+            }
+            50% {
+                height: 45px;
+            }
+        }
+
+        @keyframes spin {
+            from {
+                transform: translate(-50%, -50%) rotate(0deg);
+            }
+            to {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Success/Error Feedback */
+        .feedback {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .feedback.success {
+            background: radial-gradient(circle, rgba(76, 217, 100, 0.4) 0%, transparent 70%);
+            animation: feedbackPulse 0.6s ease;
+        }
+
+        .feedback.error {
+            background: radial-gradient(circle, rgba(255, 59, 48, 0.4) 0%, transparent 70%);
+            animation: feedbackPulse 0.6s ease;
+        }
+
+        @keyframes feedbackPulse {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        /* Controls Panel */
+        .controls {
+            margin-top: 3rem;
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            animation: fadeInUp 1s ease 0.3s both;
+            transition: opacity 0.3s ease;
+        }
+
+        .control-btn {
+            padding: 8px 16px;
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.3);
+            color: #2563eb;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-family: 'AQUIRE', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .control-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(37, 99, 235, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .control-btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .control-btn:hover {
+            background: rgba(37, 99, 235, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            border-color: rgba(37, 99, 235, 0.5);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .control-btn span {
+            position: relative;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Prime AI</h1>
+        <p class="subtitle">Voice-Enabled Personal Assistant</p>
+
+        <div class="mic-container">
+            <!-- Pulse Rings -->
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring"></div>
+
+            <!-- Processing Ring -->
+            <div class="processing-ring"></div>
+
+            <!-- Feedback Element -->
+            <div class="feedback"></div>
+
+            <!-- Main Microphone Button -->
+            <button class="mic-button" id="micButton">
+                <div class="mic-icon">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    </svg>
+                </div>
+            </button>
+        </div>
+
+        <!-- Status Text -->
+        <div class="status-text" id="statusText">Click or press Space to start listening</div>
+
+        <!-- Keyboard Shortcut Hint -->
+        <div class="keyboard-hint">
+            Press <span class="key">Space</span> to toggle
+        </div>
+
+        <!-- Audio Visualizer -->
+        <div class="audio-visualizer" id="visualizer">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+
+
+    </div>
+
+    <script>
+        // State management
+        let isListening = false;
+        let isProcessing = false;
+
+        // DOM elements
+        const micButton = document.getElementById('micButton');
+        const statusText = document.getElementById('statusText');
+        const visualizer = document.getElementById('visualizer');
+        const processingRing = document.querySelector('.processing-ring');
+        const feedbackElement = document.querySelector('.feedback');
+        const container = document.querySelector('.container');
+        const title = document.querySelector('.title');
+
+        // Microphone button click handler
+        micButton.addEventListener('click', toggleMicrophone);
+
+        // Keyboard shortcut (Space)
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !isProcessing) {
+                e.preventDefault();
+                toggleMicrophone();
+            }
+        });
+
+        function toggleMicrophone() {
+            if (isProcessing) return;
+
+            if (!isListening) {
+                startListening();
+            } else {
+                stopListening();
+            }
+        }
+
+        function startListening() {
+            isListening = true;
+            micButton.classList.add('active');
+            visualizer.classList.add('active');
+            container.classList.add('listening-mode');
+            title.classList.add('animate');
+            statusText.textContent = '🎤 Listening... Speak now';
+            
+            showFeedback('success');
+
+            // Simulate stopping after 5 seconds
+            setTimeout(() => {
+                if (isListening) {
+                    processAudio();
+                }
+            }, 5000);
+        }
+
+        function stopListening() {
+            isListening = false;
+            micButton.classList.remove('active');
+            visualizer.classList.remove('active');
+            container.classList.remove('listening-mode');
+            title.classList.remove('animate');
+            statusText.textContent = 'Click or press Space to start listening';
+            
+            showFeedback('success');
+        }
+
+        function processAudio() {
+            isListening = false;
+            isProcessing = true;
+            
+            micButton.classList.remove('active');
+            visualizer.classList.remove('active');
+            processingRing.classList.add('active');
+            title.classList.remove('animate');
+            
+            statusText.textContent = '⚙️ Processing your request...';
+
+            // Simulate processing time
+            setTimeout(() => {
+                finishProcessing();
+            }, 2000);
+        }
+
+        function finishProcessing() {
+            isProcessing = false;
+            processingRing.classList.remove('active');
+            container.classList.remove('listening-mode');
+            
+            // Simulate response
+            const responses = [
+                '✅ Task completed successfully',
+                '📁 Files organized',
+                '🔍 Search results ready',
+                '💡 Here\'s what I found',
+                '📝 Notes created'
+            ];
+            
+            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+            statusText.textContent = randomResponse;
+            
+            showFeedback('success');
+
+            // Reset after 3 seconds
+            setTimeout(() => {
+                statusText.textContent = 'Click or press Space to start listening';
+            }, 3000);
+        }
+
+        function showFeedback(type) {
+            feedbackElement.className = 'feedback ' + type;
+            
+            // Remove class after animation
+            setTimeout(() => {
+                feedbackElement.className = 'feedback';
+            }, 600);
+        }
+
+        // Prevent default space behavior
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && e.target === document.body) {
+                e.preventDefault();
+            }
+        });
+
+        // ============================================
+        // Communication with Main Window
+        // ============================================
+        
+        function notifyMainWindow(type, data) {
+            if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({
+                    type: type,
+                    ...data
+                }, '*');
+            }
+        }
+
+        // Override startListening to notify main window
+        const originalStartListening = startListening;
+        window.startListening = startListening = function() {
+            originalStartListening();
+            notifyMainWindow('mic_listening', { listening: true });
+        };
+
+        // Override stopListening to notify main window
+        const originalStopListening = stopListening;
+        window.stopListening = stopListening = function() {
+            originalStopListening();
+            notifyMainWindow('mic_listening', { listening: false });
+        };
+
+        // Override processAudio to notify main window
+        const originalProcessAudio = processAudio;
+        window.processAudio = processAudio = function() {
+            originalProcessAudio();
+            notifyMainWindow('mic_processing', {});
+        };
+
+        // Override finishProcessing to send voice result
+        const originalFinishProcessing = finishProcessing;
+        window.finishProcessing = finishProcessing = function() {
+            // Simulate getting transcribed text
+            // In real implementation, this would come from speech recognition
+            const simulatedCommands = [
+                'open file manager',
+                'create study plan',
+                'explain code',
+                'check system health',
+                'summarize document',
+                'help me debug this code',
+                'what are my reminders'
+            ];
+            
+            const transcribedText = simulatedCommands[Math.floor(Math.random() * simulatedCommands.length)];
+            
+            // Send result to main window
+            notifyMainWindow('mic_result', { text: transcribedText });
+            
+            originalFinishProcessing();
+        };
+
+        // Function to receive messages from main window
+        window.addEventListener('message', (event) => {
+            if (!event.data || !event.data.type) return;
+
+            switch (event.data.type) {
+                case 'close_mic':
+                    window.close();
+                    break;
+                case 'force_stop':
+                    if (isListening) {
+                        stopListening();
+                    }
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>
