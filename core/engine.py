@@ -1,5 +1,7 @@
-from core.intent_detector import IntentDetector
-from core.command_router import CommandRouter
+# from core.intent_detector import IntentDetector
+# from core.command_router import CommandRouter
+from intent_detector import IntentDetector
+from command_router import CommandRouter
 
 class Engine:
     def __init__(self):
