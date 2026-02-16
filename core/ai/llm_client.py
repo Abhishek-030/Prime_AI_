@@ -3,7 +3,7 @@ import json
 import re
 
 class LLMClient: 
-    def __init__(self, model="qwen2.5-coder:7b"):
+    def __init__(self, model="qwen2.5-coder:1.5b"):
         self.model=model
         self.url="http://localhost:11434/api/generate"
 
