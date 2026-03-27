@@ -1,6 +1,6 @@
-from filesystem.directory_manager import DirectoryManager
-from system.system_info import SystemInfo
-from system.app_launcher import AppLauncher
+from core.filesystem.directory_manager import DirectoryManager
+from core.system.system_info import SystemInfo
+from core.system.app_launcher import AppLauncher
 
 class CommandRouter:
     def route(self, command: dict) -> str:
@@ -21,7 +21,4 @@ class CommandRouter:
                 app_name=params.get("app","")
             )
 
-        # if intent == "OPEN_APP":
-        #     return "Opening application (stub)"
-
-        return intent
+        return f"I'm not sure how to handle that request (intent: {intent}). Try asking me to open an app, create a folder, or check system info."

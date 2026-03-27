@@ -1,47 +1,33 @@
 import psutil
 import platform
 
-class SystemInfo: 
+class SystemInfo:
 
     @staticmethod
-    def get_info()->str: 
-        try: 
-            cpu_usage=psutil.cpu_percent(interval=1)
-            memory=psutil.virtual_memory()
-            disk=psutil.disk_usage("/")
+    def get_info() -> str:
+        try:
+            cpu_usage = psutil.cpu_percent(interval=1)
+            memory = psutil.virtual_memory()
 
-            os_name=platform.system()
-            os_version=platform.version()
+            # Use platform-aware disk path — Windows needs "C:\", Unix uses "/"
+            disk_path = "C:\\" if platform.system() == "Windows" else "/"
+            disk = psutil.disk_usage(disk_path)
 
-            return {
-                "status": "success",
-                "os_name": platform.system(),
-                "os_version": platform.version(),
-                "cpu_usage": cpu_usage,
-                "memory": {
-                    "percent": memory.percent,
-                    "used_gb": round(memory.used / (1024**3), 2),
-                    "total_gb": round(memory.total / (1024**3), 2)
-                },
-                "disk": {
-                    "percent": disk.percent,
-                    "used_gb": round(disk.used / (1024**3), 2),
-                    "total_gb": round(disk.total / (1024**3), 2)
-                }
-            }
-        except Exception as e: 
-            return {"status": "error", "message": str(e)}
-        
-        # (
-        #         f"Operating System: {os_name}\n"
-        #         f"OS Version: {os_version}\n"
-        #         f"CPU usage: {cpu_usage}%\n"
-        #         f"RAM usage: {memory.percent}% "
-        #         f"({round(memory.used / (1024**3), 2)}GB /"
-        #         f"{round(memory.total /(1024**3), 2)}GB)\n"
-        #         f"Disk Usage: {disk.percent}% "
-        #         f"({round(disk.used / (1024**3), 2)}GB /"
-        #         f"{round(disk.total / (1024**3), 2)}GB)"
-        #     )
-        # except Exception as e: 
-        #     return f"Error retrieving system information : {str(e)}"
+            os_name = platform.system()
+            os_version = platform.version()
+
+            mem_used  = round(memory.used  / (1024**3), 2)
+            mem_total = round(memory.total / (1024**3), 2)
+            disk_used  = round(disk.used  / (1024**3), 2)
+            disk_total = round(disk.total / (1024**3), 2)
+
+            return (
+                f"Here's your system health report:\n"
+                f"• OS: {os_name} ({os_version[:40]})\n"
+                f"• CPU Usage: {cpu_usage}%\n"
+                f"• RAM: {memory.percent}% used ({mem_used} GB / {mem_total} GB)\n"
+                f"• Disk (C:\\): {disk.percent}% used ({disk_used} GB / {disk_total} GB)"
+            )
+
+        except Exception as e:
+            return f"Error retrieving system information: {str(e)}"

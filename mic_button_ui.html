@@ -455,6 +455,61 @@
             position: relative;
             z-index: 1;
         }
+
+        /* Transcription Display */
+        .transcription-display {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.3);
+            border-radius: 12px;
+            min-height: 80px;
+            max-height: 150px;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        .transcription-display.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Make transcription more prominent during listening mode */
+        .container.listening-mode .transcription-display.visible {
+            background: rgba(37, 99, 235, 0.15);
+            border: 2px solid rgba(37, 99, 235, 0.5);
+            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.3);
+            opacity: 1;
+        }
+
+        .transcription-text {
+            color: #2563eb;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            text-align: left;
+            font-weight: 500;
+            word-wrap: break-word;
+            animation: textFadeIn 0.3s ease;
+        }
+
+        @keyframes textFadeIn {
+            from {
+                opacity: 0.5;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .transcription-text:empty::before {
+            content: 'Transcription will appear here...';
+            color: rgba(37, 99, 235, 0.5);
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -505,6 +560,10 @@
             <div class="bar"></div>
         </div>
 
+        <!-- Transcription Display -->
+        <div class="transcription-display" id="transcriptionDisplay">
+            <div class="transcription-text" id="transcriptionText"></div>
+        </div>
 
     </div>
 
@@ -522,24 +581,16 @@
         const container = document.querySelector('.container');
         const title = document.querySelector('.title');
 
-        // Microphone button click handler
-        micButton.addEventListener('click', toggleMicrophone);
-
-        // Keyboard shortcut (Space)
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && !isProcessing) {
-                e.preventDefault();
-                toggleMicrophone();
-            }
+        // Initialize
+        window.addEventListener('load', () => {
+            notifyMainWindow('mic_ready', {});
         });
 
         function toggleMicrophone() {
-            if (isProcessing) return;
-
-            if (!isListening) {
-                startListening();
-            } else {
-                stopListening();
+            // In real implementation, the main window controls the state
+            // But we allow clicking the button to stop recording
+            if (isListening) {
+                notifyMainWindow('stop_recording_request', {});
             }
         }
 
@@ -551,14 +602,13 @@
             title.classList.add('animate');
             statusText.textContent = '🎤 Listening... Speak now';
             
+            // Show transcription display immediately
+            const transcriptionDisplay = document.getElementById('transcriptionDisplay');
+            const transcriptionText = document.getElementById('transcriptionText');
+            transcriptionDisplay.classList.add('visible');
+            transcriptionText.textContent = ''; // Clear previous text
+            
             showFeedback('success');
-
-            // Simulate stopping after 5 seconds
-            setTimeout(() => {
-                if (isListening) {
-                    processAudio();
-                }
-            }, 5000);
         }
 
         function stopListening() {
@@ -581,12 +631,7 @@
             processingRing.classList.add('active');
             title.classList.remove('animate');
             
-            statusText.textContent = '⚙️ Processing your request...';
-
-            // Simulate processing time
-            setTimeout(() => {
-                finishProcessing();
-            }, 2000);
+            statusText.textContent = '⚙️ Processing...';
         }
 
         function finishProcessing() {
@@ -594,24 +639,7 @@
             processingRing.classList.remove('active');
             container.classList.remove('listening-mode');
             
-            // Simulate response
-            const responses = [
-                '✅ Task completed successfully',
-                '📁 Files organized',
-                '🔍 Search results ready',
-                '💡 Here\'s what I found',
-                '📝 Notes created'
-            ];
-            
-            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-            statusText.textContent = randomResponse;
-            
-            showFeedback('success');
-
-            // Reset after 3 seconds
-            setTimeout(() => {
-                statusText.textContent = 'Click or press Space to start listening';
-            }, 3000);
+            statusText.textContent = 'Click or press Space to start listening';
         }
 
         function showFeedback(type) {
@@ -627,6 +655,9 @@
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space' && e.target === document.body) {
                 e.preventDefault();
+                if (isListening) {
+                    notifyMainWindow('stop_recording_request', {});
+                }
             }
         });
 
@@ -642,50 +673,8 @@
                 }, '*');
             }
         }
-
-        // Override startListening to notify main window
-        const originalStartListening = startListening;
-        window.startListening = startListening = function() {
-            originalStartListening();
-            notifyMainWindow('mic_listening', { listening: true });
-        };
-
-        // Override stopListening to notify main window
-        const originalStopListening = stopListening;
-        window.stopListening = stopListening = function() {
-            originalStopListening();
-            notifyMainWindow('mic_listening', { listening: false });
-        };
-
-        // Override processAudio to notify main window
-        const originalProcessAudio = processAudio;
-        window.processAudio = processAudio = function() {
-            originalProcessAudio();
-            notifyMainWindow('mic_processing', {});
-        };
-
-        // Override finishProcessing to send voice result
-        const originalFinishProcessing = finishProcessing;
-        window.finishProcessing = finishProcessing = function() {
-            // Simulate getting transcribed text
-            // In real implementation, this would come from speech recognition
-            const simulatedCommands = [
-                'open file manager',
-                'create study plan',
-                'explain code',
-                'check system health',
-                'summarize document',
-                'help me debug this code',
-                'what are my reminders'
-            ];
-            
-            const transcribedText = simulatedCommands[Math.floor(Math.random() * simulatedCommands.length)];
-            
-            // Send result to main window
-            notifyMainWindow('mic_result', { text: transcribedText });
-            
-            originalFinishProcessing();
-        };
+        
+        // Removed overridden functions as they are no longer needed for simulation
 
         // Function to receive messages from main window
         window.addEventListener('message', (event) => {
@@ -695,13 +684,45 @@
                 case 'close_mic':
                     window.close();
                     break;
-                case 'force_stop':
-                    if (isListening) {
-                        stopListening();
-                    }
+                case 'start_listening':
+                    startListening();
+                    break;
+                case 'stop_listening':
+                    stopListening();
+                    break;
+                case 'transcription_update':
+                    updateTranscription(event.data.text);
+                    break;
+                case 'error':
+                    showFeedback('error');
+                    statusText.textContent = '❌ ' + event.data.message;
+                    statusText.style.color = '#ff3b30'; // Red color
+                    processingRing.classList.remove('active');
+                    micButton.classList.remove('active');
+                    visualizer.classList.remove('active');
+                    container.classList.remove('listening-mode');
+                    isListening = false;
+                    isProcessing = false;
                     break;
             }
         });
+
+        // Function to update transcription display
+        function updateTranscription(text) {
+            const transcriptionDisplay = document.getElementById('transcriptionDisplay');
+            const transcriptionText = document.getElementById('transcriptionText');
+            
+            if (text && text.trim()) {
+                transcriptionText.textContent = text;
+                transcriptionDisplay.classList.add('visible');
+                
+                // Auto-scroll to bottom to show latest text
+                transcriptionDisplay.scrollTop = transcriptionDisplay.scrollHeight;
+            } else {
+                transcriptionText.textContent = '';
+                transcriptionDisplay.classList.remove('visible');
+            }
+        }
     </script>
 </body>
 </html>
