@@ -1,621 +1,667 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Prime AI</title>
-    <link rel="stylesheet" href="styles.css?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Modern Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-</head>
-<body>
-    
-    <!-- Loading Screen -->
+    <link rel="stylesheet" href="styles.css?v=3.0" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+
+    <!-- ═══════════════════════════════════════ LOADING SCREEN -->
     <div class="loading-screen" id="loading-screen">
-        <div class="loading-content">
-            <div class="loading-logo">
-                <i class="fas fa-brain"></i>
-                <div class="loading-pulse"></div>
-            </div>
-            <h2>Prime AI</h2>
-            <div class="loading-bar">
-                <div class="loading-progress"></div>
-            </div>
-            <p class="loading-text">Initializing AI Systems...</p>
+      <div class="loading-content">
+        <div class="loading-logo">
+          <i class="fas fa-brain"></i>
+          <div class="loading-pulse"></div>
         </div>
+        <h2>Prime AI</h2>
+        <div class="loading-bar"><div class="loading-progress"></div></div>
+        <div class="loading-percent" id="loading-percent"></div>
+        <p class="loading-text" id="loading-text">Initializing AI Systems...</p>
+      </div>
     </div>
-    <!-- Main Container -->
+
+    <!-- ═══════════════════════════════════════ MAIN CONTAINER -->
     <div class="app-container">
-        
-        <!-- Animated Background Particles -->
-        <div class="bg-particles">
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
-            <div class="particle"></div>
+
+      <!-- ────────────────────── SIDEBAR -->
+      <aside class="sidebar" id="sidebar">
+        <div class="resize-handle" id="resize-handle"></div>
+
+        <div class="sidebar-header">
+          <button class="new-chat-btn" id="new-chat-btn">
+            <i class="fas fa-plus"></i><span>New Chat</span>
+          </button>
         </div>
-        
-        <!-- Sidebar - Chat History -->
-        <aside class="sidebar" id="sidebar">
-            <!-- Resize Handle -->
-            <div class="resize-handle" id="resize-handle"></div>
-            <!-- Sidebar Header -->
-            <div class="sidebar-header">
-                <button class="new-chat-btn" id="new-chat-btn">
-                    <i class="fas fa-plus"></i>
-                    <span>New Chat</span>
+
+        <!-- Chat History -->
+        <div class="chat-history" id="chat-history">
+          <div class="history-section">
+            <h4>Today</h4>
+            <div class="history-item active">
+              <i class="fas fa-message"></i>
+              <span>Welcome to Prime AI</span>
+              <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          <div class="history-section">
+            <h4>Yesterday</h4>
+            <div class="history-item">
+              <i class="fas fa-message"></i>
+              <span>Help with Python code</span>
+              <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="history-item">
+              <i class="fas fa-message"></i>
+              <span>File organization task</span>
+              <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          <div class="history-section">
+            <h4>Previous 7 Days</h4>
+            <div class="history-item">
+              <i class="fas fa-message"></i>
+              <span>Study plan creation</span>
+              <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="history-item">
+              <i class="fas fa-message"></i>
+              <span>System health check</span>
+              <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <!-- Weekly Summary Button -->
+          <button class="sidebar-summary-btn" id="weekly-summary-btn" title="View weekly activity summary">
+            <i class="fas fa-chart-bar"></i>
+            <span>Weekly Summary</span>
+          </button>
+
+          <div class="user-profile" id="user-profile">
+            <div class="user-avatar"><i class="fas fa-user"></i></div>
+            <div class="user-info">
+              <span class="user-name">User</span>
+              <span class="user-email">user@prime.ai</span>
+            </div>
+            <button class="btn-icon more-btn"><i class="fas fa-ellipsis-h"></i></button>
+          </div>
+
+          <div class="dropdown-menu" id="user-menu">
+            <button class="dropdown-item" id="profile-btn"><i class="fas fa-user"></i><span>Profile</span></button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" id="register-btn"><i class="fas fa-user-plus"></i><span>Register</span></button>
+            <button class="dropdown-item" id="sign-in-btn"><i class="fas fa-sign-in-alt"></i><span>Sign In</span></button>
+            <button class="dropdown-item" id="sign-out-btn"><i class="fas fa-sign-out-alt"></i><span>Sign Out</span></button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ────────────────────── MAIN CONTENT -->
+      <main class="main-content">
+
+        <!-- Top Navigation Bar -->
+        <header class="top-nav">
+          <div class="nav-center">
+            <div class="model-selector">
+              <div class="personality-backdrop" id="personality-backdrop"></div>
+              <button class="model-btn" id="model-btn">
+                <i class="fas fa-brain"></i>
+                <span>Normal Mode</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="dropdown-menu" id="personality-menu">
+                <button class="dropdown-item personality-option active" data-personality="normal"><i class="fas fa-robot"></i><span>Normal Mode</span></button>
+                <button class="dropdown-item personality-option" data-personality="study"><i class="fas fa-graduation-cap"></i><span>Study Mode</span></button>
+                <button class="dropdown-item personality-option" data-personality="chill"><i class="fas fa-coffee"></i><span>Chill Mode</span></button>
+                <button class="dropdown-item personality-option" data-personality="strict"><i class="fas fa-gavel"></i><span>Strict Mode</span></button>
+                <button class="dropdown-item personality-option" data-personality="funny"><i class="fas fa-laugh"></i><span>Funny Mode</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="nav-actions">
+            <!-- Wake Word Indicator -->
+            <div class="wake-word-badge" id="wake-word-badge" title="Say 'Hey Prime' to activate voice">
+              <i class="fas fa-microphone-alt"></i>
+              <span>Hey Prime</span>
+              <div class="wake-indicator"></div>
+            </div>
+
+            <!-- Study/Focus Mode Toggle -->
+            <button class="btn-icon focus-btn" id="focus-mode-btn" title="Focus / Study Mode">
+              <i class="fas fa-crosshairs"></i>
+            </button>
+
+            <!-- System Health Toggle -->
+            <button class="btn-icon health-btn" id="health-toggle-btn" title="System Health Monitor">
+              <i class="fas fa-heartbeat"></i>
+              <span class="health-dot" id="health-dot"></span>
+            </button>
+
+            <button class="btn-icon" id="theme-toggle" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+            <button class="btn-icon" id="settings-btn" title="Settings"><i class="fas fa-cog"></i></button>
+          </div>
+        </header>
+
+        <!-- ─── SYSTEM HEALTH PANEL (toggleable) -->
+        <div class="health-panel" id="health-panel">
+          <div class="health-panel-header">
+            <div class="health-panel-title">
+              <i class="fas fa-heartbeat"></i>
+              <span>System Health</span>
+            </div>
+            <div class="health-panel-actions">
+              <span class="health-last-updated" id="health-last-updated">Updating...</span>
+              <button class="btn-icon" id="health-refresh-btn" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+              <button class="btn-icon" id="health-close-btn" title="Close"><i class="fas fa-times"></i></button>
+            </div>
+          </div>
+
+          <div class="health-stats-grid">
+            <!-- CPU -->
+            <div class="health-stat-card" id="cpu-card">
+              <div class="health-stat-icon cpu-icon"><i class="fas fa-microchip"></i></div>
+              <div class="health-stat-info">
+                <div class="health-stat-label">CPU Usage</div>
+                <div class="health-stat-value" id="cpu-value">—</div>
+                <div class="health-bar-wrap">
+                  <div class="health-bar"><div class="health-bar-fill" id="cpu-bar" style="width:0%"></div></div>
+                </div>
+                <div class="health-stat-sub" id="cpu-sub">— cores · — MHz</div>
+              </div>
+            </div>
+
+            <!-- RAM -->
+            <div class="health-stat-card" id="ram-card">
+              <div class="health-stat-icon ram-icon"><i class="fas fa-memory"></i></div>
+              <div class="health-stat-info">
+                <div class="health-stat-label">RAM Usage</div>
+                <div class="health-stat-value" id="ram-value">—</div>
+                <div class="health-bar-wrap">
+                  <div class="health-bar"><div class="health-bar-fill" id="ram-bar" style="width:0%"></div></div>
+                </div>
+                <div class="health-stat-sub" id="ram-sub">— / — GB used</div>
+              </div>
+            </div>
+
+            <!-- Disk -->
+            <div class="health-stat-card" id="disk-card">
+              <div class="health-stat-icon disk-icon"><i class="fas fa-hdd"></i></div>
+              <div class="health-stat-info">
+                <div class="health-stat-label">Disk Usage</div>
+                <div class="health-stat-value" id="disk-value">—</div>
+                <div class="health-bar-wrap">
+                  <div class="health-bar"><div class="health-bar-fill" id="disk-bar" style="width:0%"></div></div>
+                </div>
+                <div class="health-stat-sub" id="disk-sub">— / — GB used</div>
+              </div>
+            </div>
+
+            <!-- Network -->
+            <div class="health-stat-card" id="net-card">
+              <div class="health-stat-icon net-icon"><i class="fas fa-network-wired"></i></div>
+              <div class="health-stat-info">
+                <div class="health-stat-label">Network I/O</div>
+                <div class="health-stat-value" id="net-value">—</div>
+                <div class="health-stat-sub" id="net-sub">↑ — MB  ↓ — MB</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Processes -->
+          <div class="health-processes">
+            <div class="health-processes-title"><i class="fas fa-list"></i> Top Processes</div>
+            <div class="health-processes-list" id="health-processes-list">
+              <div class="health-process-item placeholder">
+                <span>Waiting for data...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── CHAT CONTAINER -->
+        <div class="chat-container">
+          <div class="chat-messages" id="chat-messages">
+            <!-- Welcome Screen -->
+            <div class="welcome-screen">
+              <div class="welcome-logo"><i class="fas fa-brain"></i></div>
+              <h1>Prime AI</h1>
+              <p class="welcome-subtitle">Your intelligent personal assistant</p>
+
+              <!-- Proactive Suggestion Strip -->
+              <div class="proactive-strip" id="proactive-strip">
+                <div class="proactive-chip"><i class="fas fa-clock"></i> <span id="proactive-msg">Good day! Ready to help.</span></div>
+              </div>
+
+              <div class="suggestion-cards">
+                <button class="suggestion-card" data-prompt="Help me organize my files by date and type">
+                  <i class="fas fa-folder-tree"></i><span>Organize my files</span>
                 </button>
+                <button class="suggestion-card" data-prompt="Create a study schedule for the next week">
+                  <i class="fas fa-calendar-alt"></i><span>Create study plan</span>
+                </button>
+                <button class="suggestion-card" data-prompt="Explain this code and help me debug it">
+                  <i class="fas fa-code"></i><span>Debug my code</span>
+                </button>
+                <button class="suggestion-card" data-prompt="Check my system health and suggest optimizations">
+                  <i class="fas fa-heartbeat"></i><span>System health check</span>
+                </button>
+                <button class="suggestion-card" data-prompt="Start a 25-minute Pomodoro focus session for studying">
+                  <i class="fas fa-crosshairs"></i><span>Focus session</span>
+                </button>
+                <button class="suggestion-card" data-prompt="Summarize my week and give productivity tips">
+                  <i class="fas fa-chart-bar"></i><span>Weekly summary</span>
+                </button>
+              </div>
             </div>
-            
-            <!-- Chat History List -->
-            <div class="chat-history" id="chat-history">
-                <div class="history-section">
-                    <h4>Today</h4>
-                    <div class="history-item active">
-                        <i class="fas fa-message"></i>
-                        <span>Welcome to Prime AI</span>
-                        <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
-                    </div>
+          </div>
+
+          <!-- Chat Input Area -->
+          <div class="chat-input-area">
+            <div class="input-container">
+              <div class="input-wrapper">
+                <button class="input-icon-btn" id="attach-btn" title="Attach file">
+                  <i class="fas fa-paperclip"></i>
+                </button>
+                <textarea id="chat-input" placeholder="Message Prime AI..." rows="1" autocomplete="off"></textarea>
+                <button class="input-icon-btn voice-btn" id="voice-btn" title="Voice input">
+                  <i class="fas fa-microphone"></i>
+                </button>
+                <button class="send-btn" id="send-btn" disabled>
+                  <i class="fas fa-arrow-up"></i>
+                </button>
+              </div>
+              <div class="input-footer">
+                <span class="input-info">Prime AI can make mistakes. Check important info.</span>
+                <!-- TTS Status Chip -->
+                <div class="tts-status-chip" id="tts-status-chip" title="Text-to-Speech active">
+                  <i class="fas fa-volume-up"></i>
+                  <span id="tts-voice-name">Aria · 1.0×</span>
                 </div>
-                
-                <div class="history-section">
-                    <h4>Yesterday</h4>
-                    <div class="history-item">
-                        <i class="fas fa-message"></i>
-                        <span>Help with Python code</span>
-                        <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
-                    </div>
-                    <div class="history-item">
-                        <i class="fas fa-message"></i>
-                        <span>File organization task</span>
-                        <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>
-                
-                <div class="history-section">
-                    <h4>Previous 7 Days</h4>
-                    <div class="history-item">
-                        <i class="fas fa-message"></i>
-                        <span>Study plan creation</span>
-                        <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
-                    </div>
-                    <div class="history-item">
-                        <i class="fas fa-message"></i>
-                        <span>System health check</span>
-                        <button class="delete-chat-btn"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>
+              </div>
             </div>
-            
-            <!-- Sidebar Footer -->
-            <div class="sidebar-footer">
-                <div class="user-profile" id="user-profile">
-                    <div class="user-avatar">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <div class="user-info">
-                        <span class="user-name">User</span>
-                        <span class="user-email"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="81f4f2e4f3c1f1f3e8ece4e0e8afe2eeec">[email&#160;protected]</a></span>
-                    </div>
-                    <button class="btn-icon more-btn">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </button>
-                </div>
-                
-                <!-- User Menu Dropdown -->
-                <div class="dropdown-menu" id="user-menu">
-                    <button class="dropdown-item" id="profile-btn">
-                        <i class="fas fa-user"></i>
-                        <span>Profile</span>
-                    </button>
-                    <button class="dropdown-item" id="settings-menu-btn">
-                        <i class="fas fa-cog"></i>
-                        <span>Settings</span>
-                    </button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" id="register-btn">
-                        <i class="fas fa-user-plus"></i>
-                        <span>Register</span>
-                    </button>
-                    <button class="dropdown-item" id="sign-in-btn">
-                        <i class="fas fa-sign-in-alt"></i>
-                        <span>Sign In</span>
-                    </button>
-                    <button class="dropdown-item" id="sign-out-btn">
-                        <i class="fas fa-sign-out-alt"></i>
-                        <span>Sign Out</span>
-                    </button>
-                </div>
-            </div>
-        </aside>
-        
-        <!-- Main Chat Area -->
-        <main class="main-content">
-            
-            <!-- Top Navigation Bar -->
-            <header class="top-nav">
-                <div class="nav-center">
-                    <div class="model-selector">
-                        <!-- Backdrop for personality menu -->
-                        <div class="personality-backdrop" id="personality-backdrop"></div>
-                        
-                        <button class="model-btn" id="model-btn">
-                            <i class="fas fa-brain"></i>
-                            <span>Normal Mode</span>
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
-                        
-                        <!-- Personality Selector Dropdown -->
-                        <div class="dropdown-menu" id="personality-menu">
-                            <button class="dropdown-item personality-option active" data-personality="normal">
-                                <i class="fas fa-robot"></i>
-                                <span>Normal Mode</span>
-                            </button>
-                            <button class="dropdown-item personality-option" data-personality="study">
-                                <i class="fas fa-graduation-cap"></i>
-                                <span>Study Mode</span>
-                            </button>
-                            <button class="dropdown-item personality-option" data-personality="chill">
-                                <i class="fas fa-coffee"></i>
-                                <span>Chill Mode</span>
-                            </button>
-                            <button class="dropdown-item personality-option" data-personality="strict">
-                                <i class="fas fa-gavel"></i>
-                                <span>Strict Mode</span>
-                            </button>
-                            <button class="dropdown-item personality-option" data-personality="funny">
-                                <i class="fas fa-laugh"></i>
-                                <span>Funny Mode</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="nav-actions">
-                    <button class="btn-icon" id="theme-toggle" title="Toggle Theme">
-                        <i class="fas fa-moon"></i>
-                    </button>
-                    <button class="btn-icon" id="settings-btn" title="Settings">
-                        <i class="fas fa-cog"></i>
-                    </button>
-                </div>
-            </header>
-            
-            <!-- Chat Messages Container -->
-            <div class="chat-container">
-                <div class="chat-messages" id="chat-messages">
-                    <!-- Welcome Screen -->
-                    <div class="welcome-screen">
-                        <div class="welcome-logo">
-                            <i class="fas fa-brain"></i>
-                        </div>
-                        <h1>Prime AI</h1>
-                        <p class="welcome-subtitle">Your intelligent personal assistant</p>
-                        
-                        <!-- Suggestion Cards -->
-                        <div class="suggestion-cards">
-                            <button class="suggestion-card" data-prompt="Help me organize my files by date and type">
-                                <i class="fas fa-folder-tree"></i>
-                                <span>Organize my files</span>
-                            </button>
-                            <button class="suggestion-card" data-prompt="Create a study schedule for the next week">
-                                <i class="fas fa-calendar-alt"></i>
-                                <span>Create study plan</span>
-                            </button>
-                            <button class="suggestion-card" data-prompt="Explain this code and help me debug it">
-                                <i class="fas fa-code"></i>
-                                <span>Debug my code</span>
-                            </button>
-                            <button class="suggestion-card" data-prompt="Check my system health and suggest optimizations">
-                                <i class="fas fa-heartbeat"></i>
-                                <span>System health check</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Chat Input Area -->
-                <div class="chat-input-area">
-                    <div class="input-container">
-                        <div class="input-wrapper">
-                            <button class="input-icon-btn" id="attach-btn" title="Attach file">
-                                <i class="fas fa-paperclip"></i>
-                            </button>
-                            
-                            <textarea 
-                                id="chat-input" 
-                                placeholder="Message Prime AI..."
-                                rows="1"
-                                autocomplete="off"
-                            ></textarea>
-                            
-                            <button class="input-icon-btn voice-btn" id="voice-btn" title="Voice input">
-                                <i class="fas fa-microphone"></i>
-                            </button>
-                            
-                            <button class="send-btn" id="send-btn" disabled>
-                                <i class="fas fa-arrow-up"></i>
-                            </button>
-                        </div>
-                        
-                        <div class="input-footer">
-                            <span class="input-info">Prime AI can make mistakes. Check important info.</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
+          </div>
+        </div>
+      </main>
     </div>
-    
-    <!-- JavaScript -->
-    <script src="app.js"></script>
-    
-    <!-- Settings Modal -->
+
+    <!-- ═══════════════════════════════════════ FOCUS / STUDY MODE OVERLAY -->
+    <div class="focus-overlay" id="focus-overlay">
+      <div class="focus-panel">
+        <div class="focus-header">
+          <div class="focus-title">
+            <i class="fas fa-crosshairs"></i>
+            <span id="focus-mode-label">Focus Session</span>
+          </div>
+          <button class="btn-icon" id="focus-close-btn"><i class="fas fa-times"></i></button>
+        </div>
+
+        <!-- Pomodoro Timer Ring -->
+        <div class="pomodoro-ring-wrap">
+          <svg class="pomodoro-ring" viewBox="0 0 200 200">
+            <circle class="ring-track" cx="100" cy="100" r="88" />
+            <circle class="ring-progress" id="ring-progress" cx="100" cy="100" r="88"
+              stroke-dasharray="553" stroke-dashoffset="0" />
+          </svg>
+          <div class="pomodoro-center">
+            <div class="pomodoro-time" id="pomodoro-time">25:00</div>
+            <div class="pomodoro-phase" id="pomodoro-phase">Focus</div>
+          </div>
+        </div>
+
+        <!-- Session Counter -->
+        <div class="pomodoro-sessions">
+          <div class="session-dot active" id="sess-1"></div>
+          <div class="session-dot" id="sess-2"></div>
+          <div class="session-dot" id="sess-3"></div>
+          <div class="session-dot" id="sess-4"></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="pomodoro-controls">
+          <button class="pomo-btn secondary" id="pomo-reset-btn"><i class="fas fa-undo"></i></button>
+          <button class="pomo-btn primary" id="pomo-start-btn">
+            <i class="fas fa-play" id="pomo-play-icon"></i>
+          </button>
+          <button class="pomo-btn secondary" id="pomo-skip-btn"><i class="fas fa-forward"></i></button>
+        </div>
+
+        <!-- Stats row -->
+        <div class="focus-stats">
+          <div class="focus-stat"><div class="focus-stat-val" id="focus-completed">0</div><div class="focus-stat-lbl">Completed</div></div>
+          <div class="focus-stat-divider"></div>
+          <div class="focus-stat"><div class="focus-stat-val" id="focus-total-min">0</div><div class="focus-stat-lbl">Minutes</div></div>
+          <div class="focus-stat-divider"></div>
+          <div class="focus-stat"><div class="focus-stat-val" id="focus-streak">0</div><div class="focus-stat-lbl">Streak</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ WEEKLY SUMMARY MODAL -->
+    <div class="modal" id="weekly-modal">
+      <div class="modal-content weekly-modal-content">
+        <div class="modal-header">
+          <h3><i class="fas fa-chart-bar"></i> Weekly Summary</h3>
+          <button class="btn-icon close-modal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="weekly-grid">
+            <div class="weekly-stat-card"><div class="weekly-stat-icon"><i class="fas fa-comment-dots"></i></div><div class="weekly-stat-val" id="ws-messages">—</div><div class="weekly-stat-lbl">Messages</div></div>
+            <div class="weekly-stat-card"><div class="weekly-stat-icon"><i class="fas fa-code"></i></div><div class="weekly-stat-val" id="ws-code">—</div><div class="weekly-stat-lbl">Code Gen</div></div>
+            <div class="weekly-stat-card"><div class="weekly-stat-icon"><i class="fas fa-folder"></i></div><div class="weekly-stat-val" id="ws-files">—</div><div class="weekly-stat-lbl">Files</div></div>
+            <div class="weekly-stat-card"><div class="weekly-stat-icon"><i class="fas fa-crosshairs"></i></div><div class="weekly-stat-val" id="ws-focus">—</div><div class="weekly-stat-lbl">Focus min</div></div>
+          </div>
+
+          <!-- Activity Bar Chart -->
+          <div class="weekly-chart-section">
+            <div class="weekly-chart-title">Daily Activity</div>
+            <div class="weekly-chart" id="weekly-chart">
+              <!-- Bars injected by JS -->
+            </div>
+            <div class="weekly-chart-labels">
+              <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+            </div>
+          </div>
+
+          <!-- Top Topics -->
+          <div class="weekly-topics-section">
+            <div class="weekly-chart-title">Top Topics This Week</div>
+            <div class="weekly-topics" id="weekly-topics">
+              <!-- Tags injected by JS -->
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary close-modal">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ SETTINGS MODAL (ENHANCED) -->
     <div class="modal" id="settings-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Settings</h3>
-                <button class="btn-icon close-modal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h4>General</h4>
-                    <div class="setting-item">
-                        <label>Theme</label>
-                        <select id="theme-select">
-                            <option value="dark">Dark</option>
-                            <option value="light">Light</option>
-                            <option value="auto">Auto</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Voice</h4>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="voice-enabled" checked> Enable voice input
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="tts-enabled" checked> Enable text-to-speech
-                        </label>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Data</h4>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="save-history" checked> Save chat history
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <button class="btn-secondary clear-btn">
-                            <i class="fas fa-trash"></i> Clear all chats
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary close-modal">Close</button>
-            </div>
+      <div class="modal-content settings-modal-wide">
+        <div class="modal-header">
+          <h3><i class="fas fa-cog"></i> Settings</h3>
+          <button class="btn-icon close-modal"><i class="fas fa-times"></i></button>
         </div>
+
+        <!-- Settings Tabs -->
+        <div class="settings-tabs">
+          <button class="settings-tab active" data-tab="appearance"><i class="fas fa-palette"></i><span>Appearance</span></button>
+          <button class="settings-tab" data-tab="voice"><i class="fas fa-volume-up"></i><span>Voice & TTS</span></button>
+          <button class="settings-tab" data-tab="privacy"><i class="fas fa-shield-alt"></i><span>Privacy</span></button>
+          <button class="settings-tab" data-tab="advanced"><i class="fas fa-sliders-h"></i><span>Advanced</span></button>
+        </div>
+
+        <div class="modal-body">
+
+          <!-- ── Appearance Tab -->
+          <div class="settings-tab-panel active" id="tab-appearance">
+            <div class="settings-section">
+              <h4>Appearance</h4>
+              <div class="setting-item">
+                <label>Theme</label>
+                <select id="theme-select">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                  <option value="auto">Auto (System)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Voice & TTS Tab -->
+          <div class="settings-tab-panel" id="tab-voice">
+
+            <!-- Enable toggles -->
+            <div class="settings-section">
+              <h4>Voice Input</h4>
+              <div class="setting-item"><label><input type="checkbox" id="voice-enabled" checked /> Enable voice input</label></div>
+              <div class="setting-item"><label><input type="checkbox" id="sound-effects" checked /> Enable sound effects</label></div>
+            </div>
+
+            <div class="settings-section">
+              <h4>Text-to-Speech</h4>
+              <div class="setting-item"><label><input type="checkbox" id="tts-enabled" checked /> Enable TTS (speak responses)</label></div>
+            </div>
+
+            <!-- Gender Selector -->
+            <div class="settings-section tts-section" id="tts-section">
+              <h4>Voice Type</h4>
+              <div class="voice-gender-toggle">
+                <button class="gender-btn active" id="gender-male-btn" data-gender="male">
+                  <i class="fas fa-mars"></i> Male
+                </button>
+                <button class="gender-btn" id="gender-female-btn" data-gender="female">
+                  <i class="fas fa-venus"></i> Female
+                </button>
+              </div>
+
+              <!-- Voice Variant Cards -->
+              <div class="voice-variants" id="voice-variants">
+                <!-- Populated by JS -->
+              </div>
+
+              <!-- Speed Control -->
+              <div class="voice-control-row">
+                <div class="voice-control-label">
+                  <i class="fas fa-tachometer-alt"></i>
+                  <span>Speed</span>
+                  <span class="voice-control-val" id="speed-val">1.0×</span>
+                </div>
+                <input type="range" id="tts-speed" min="0.5" max="2.0" step="0.1" value="1.0" class="voice-slider" />
+                <div class="slider-ticks"><span>0.5×</span><span>1.0×</span><span>1.5×</span><span>2.0×</span></div>
+              </div>
+
+              <!-- Pitch Control -->
+              <div class="voice-control-row">
+                <div class="voice-control-label">
+                  <i class="fas fa-wave-square"></i>
+                  <span>Pitch</span>
+                  <span class="voice-control-val" id="pitch-val">1.0</span>
+                </div>
+                <input type="range" id="tts-pitch" min="0.5" max="2.0" step="0.1" value="1.0" class="voice-slider" />
+                <div class="slider-ticks"><span>Low</span><span>Normal</span><span>High</span></div>
+              </div>
+
+              <!-- Volume Control -->
+              <div class="voice-control-row">
+                <div class="voice-control-label">
+                  <i class="fas fa-volume-up"></i>
+                  <span>Volume</span>
+                  <span class="voice-control-val" id="volume-val">100%</span>
+                </div>
+                <input type="range" id="tts-volume" min="0" max="1" step="0.05" value="1.0" class="voice-slider" />
+              </div>
+
+              <!-- Test Voice Button -->
+              <button class="btn-secondary test-voice-btn" id="test-voice-btn">
+                <i class="fas fa-play-circle"></i> Test Voice
+              </button>
+            </div>
+
+          </div>
+
+          <!-- ── Privacy Tab -->
+          <div class="settings-tab-panel" id="tab-privacy">
+            <div class="settings-section">
+              <h4>Privacy &amp; Data</h4>
+              <div class="setting-item"><label><input type="checkbox" id="save-history" checked /> Save chat history</label></div>
+              <div class="setting-item"><label><input type="checkbox" id="analytics" checked /> Share usage analytics</label></div>
+              <div class="setting-item"><label><input type="checkbox" id="notifications" checked /> Enable notifications</label></div>
+            </div>
+          </div>
+
+          <!-- ── Advanced Tab -->
+          <div class="settings-tab-panel" id="tab-advanced">
+            <div class="settings-section">
+              <h4>Danger Zone</h4>
+              <div class="setting-item">
+                <button class="btn-secondary clear-btn" id="clear-all-chats-btn"><i class="fas fa-trash"></i> Clear all chats</button>
+              </div>
+              <div class="setting-item">
+                <button class="btn-secondary clear-btn" id="reset-settings-btn"><i class="fas fa-undo"></i> Reset to defaults</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-secondary close-modal">Cancel</button>
+          <button class="btn-primary" id="save-settings-btn"><i class="fas fa-save"></i> Save Settings</button>
+        </div>
+      </div>
     </div>
-    
-    <!-- File Attachment Modal -->
+
+    <!-- ═══════════════════════════════════════ FILE ATTACHMENT MODAL -->
     <div class="modal" id="file-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Attach File</h3>
-                <button class="btn-icon close-modal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <!-- File Upload Zone -->
-                <div class="file-upload-zone" id="file-upload-zone">
-                    <div class="upload-icon">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                    </div>
-                    <h4>Drag & Drop Files Here</h4>
-                    <p>or click to browse</p>
-                    <input type="file" id="file-input" multiple hidden>
-                    <button class="btn-secondary browse-btn" id="browse-btn">
-                        <i class="fas fa-folder-open"></i> Browse Files
-                    </button>
-                </div>
-                
-                <!-- File Type Filters -->
-                <div class="file-filters">
-                    <button class="filter-btn active" data-filter="all">
-                        <i class="fas fa-file"></i> All Files
-                    </button>
-                    <button class="filter-btn" data-filter="documents">
-                        <i class="fas fa-file-alt"></i> Documents
-                    </button>
-                    <button class="filter-btn" data-filter="images">
-                        <i class="fas fa-image"></i> Images
-                    </button>
-                    <button class="filter-btn" data-filter="videos">
-                        <i class="fas fa-video"></i> Videos
-                    </button>
-                </div>
-                
-                <!-- Selected Files List -->
-                <div class="selected-files" id="selected-files">
-                    <h4>Selected Files</h4>
-                    <div class="files-list" id="files-list">
-                        <p class="no-files">No files selected</p>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary close-modal">Cancel</button>
-                <button class="btn-primary" id="attach-files-btn" disabled>
-                    <i class="fas fa-paperclip"></i> Attach Files
-                </button>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Attach File</h3>
+          <button class="btn-icon close-modal"><i class="fas fa-times"></i></button>
         </div>
+        <div class="modal-body">
+          <div class="file-upload-zone" id="file-upload-zone">
+            <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+            <h4>Drag &amp; Drop Files Here</h4>
+            <p>or click to browse</p>
+            <input type="file" id="file-input" multiple hidden />
+            <button class="btn-secondary browse-btn" id="browse-btn"><i class="fas fa-folder-open"></i> Browse Files</button>
+          </div>
+          <div class="file-filters">
+            <button class="filter-btn active" data-filter="all"><i class="fas fa-file"></i> All Files</button>
+            <button class="filter-btn" data-filter="documents"><i class="fas fa-file-alt"></i> Documents</button>
+            <button class="filter-btn" data-filter="images"><i class="fas fa-image"></i> Images</button>
+            <button class="filter-btn" data-filter="videos"><i class="fas fa-video"></i> Videos</button>
+          </div>
+          <div class="selected-files" id="selected-files">
+            <h4>Selected Files</h4>
+            <div class="files-list" id="files-list"><p class="no-files">No files selected</p></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary close-modal">Cancel</button>
+          <button class="btn-primary" id="attach-files-btn" disabled><i class="fas fa-paperclip"></i> Attach Files</button>
+        </div>
+      </div>
     </div>
-    
-    <!-- Authentication Modal -->
+
+    <!-- ═══════════════════════════════════════ AUTH MODAL -->
     <div class="modal" id="auth-modal">
-        <div class="modal-content auth-modal-content">
-            <div class="modal-header">
-                <h3>Welcome to Prime AI</h3>
-                <button class="btn-icon close-modal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <!-- Auth Tabs -->
-            <div class="auth-tabs">
-                <button class="auth-tab active" data-tab="signin">
-                    <i class="fas fa-sign-in-alt"></i> Sign In
-                </button>
-                <button class="auth-tab" data-tab="register">
-                    <i class="fas fa-user-plus"></i> Register
-                </button>
-            </div>
-            
-            <div class="modal-body">
-                <!-- Sign In Form -->
-                <div class="auth-form-container active" id="signin-form">
-                    <form id="signin-form-element">
-                        <div class="form-group">
-                            <label for="signin-username">
-                                <i class="fas fa-user"></i> Username or Email
-                            </label>
-                            <input type="text" id="signin-username" placeholder="Enter your username or email" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="signin-password">
-                                <i class="fas fa-lock"></i> Password
-                            </label>
-                            <input type="password" id="signin-password" placeholder="Enter your password" required>
-                        </div>
-                        
-                        <div class="form-group checkbox-group">
-                            <label>
-                                <input type="checkbox" id="remember-me">
-                                <span>Remember me</span>
-                            </label>
-                        </div>
-                        
-                        <button type="submit" class="btn-primary auth-submit-btn">
-                            <i class="fas fa-sign-in-alt"></i> Sign In
-                        </button>
-                    </form>
-                </div>
-                
-                <!-- Register Form -->
-                <div class="auth-form-container" id="register-form">
-                    <form id="register-form-element">
-                        <div class="form-group">
-                            <label for="register-fullname">
-                                <i class="fas fa-user"></i> Full Name
-                            </label>
-                            <input type="text" id="register-fullname" placeholder="Enter your full name" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="register-email">
-                                <i class="fas fa-envelope"></i> Email
-                            </label>
-                            <input type="email" id="register-email" placeholder="Enter your email" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="register-username">
-                                <i class="fas fa-user-circle"></i> Username
-                            </label>
-                            <input type="text" id="register-username" placeholder="Choose a username" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="register-password">
-                                <i class="fas fa-lock"></i> Password
-                            </label>
-                            <input type="password" id="register-password" placeholder="Create a password" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="register-confirm-password">
-                                <i class="fas fa-lock"></i> Confirm Password
-                            </label>
-                            <input type="password" id="register-confirm-password" placeholder="Confirm your password" required>
-                        </div>
-                        
-                        <button type="submit" class="btn-primary auth-submit-btn">
-                            <i class="fas fa-user-plus"></i> Register
-                        </button>
-                    </form>
-                </div>
-            </div>
+      <div class="modal-content auth-modal-content">
+        <div class="modal-header">
+          <h3>Welcome to Prime AI</h3>
+          <button class="btn-icon close-modal"><i class="fas fa-times"></i></button>
         </div>
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="signin"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+          <button class="auth-tab" data-tab="register"><i class="fas fa-user-plus"></i> Register</button>
+        </div>
+        <div class="modal-body">
+          <div class="auth-form-container active" id="signin-form">
+            <form id="signin-form-element">
+              <div class="form-group">
+                <label for="signin-username"><i class="fas fa-user"></i> Username or Email</label>
+                <input type="text" id="signin-username" placeholder="Enter your username or email" required />
+              </div>
+              <div class="form-group">
+                <label for="signin-password"><i class="fas fa-lock"></i> Password</label>
+                <input type="password" id="signin-password" placeholder="Enter your password" required />
+              </div>
+              <div class="form-group checkbox-group">
+                <label><input type="checkbox" id="remember-me" /><span>Remember me</span></label>
+              </div>
+              <button type="submit" class="btn-primary auth-submit-btn"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+            </form>
+          </div>
+          <div class="auth-form-container" id="register-form">
+            <form id="register-form-element">
+              <div class="form-group">
+                <label for="register-fullname"><i class="fas fa-user"></i> Full Name</label>
+                <input type="text" id="register-fullname" placeholder="Enter your full name" required />
+              </div>
+              <div class="form-group">
+                <label for="register-email"><i class="fas fa-envelope"></i> Email</label>
+                <input type="email" id="register-email" placeholder="Enter your email" required />
+              </div>
+              <div class="form-group">
+                <label for="register-username"><i class="fas fa-user-circle"></i> Username</label>
+                <input type="text" id="register-username" placeholder="Choose a username" required />
+              </div>
+              <div class="form-group">
+                <label for="register-password"><i class="fas fa-lock"></i> Password</label>
+                <input type="password" id="register-password" placeholder="Create a password" required />
+              </div>
+              <div class="form-group">
+                <label for="register-confirm-password"><i class="fas fa-lock"></i> Confirm Password</label>
+                <input type="password" id="register-confirm-password" placeholder="Confirm your password" required />
+              </div>
+              <button type="submit" class="btn-primary auth-submit-btn"><i class="fas fa-user-plus"></i> Register</button>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
-    
-    <!-- Profile Modal -->
+
+    <!-- ═══════════════════════════════════════ PROFILE MODAL -->
     <div class="modal" id="profile-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-user"></i> User Profile</h3>
-                <button class="btn-icon close-modal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="profile-section">
-                    <div class="profile-avatar-section">
-                        <div class="profile-avatar-large" id="profile-avatar-display">
-                            <i class="fas fa-user" id="avatar-icon"></i>
-                            <img id="avatar-image" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="User Avatar">
-                        </div>
-                        <input type="file" id="avatar-file-input" accept="image/*" hidden>
-                        <button class="btn-secondary" id="change-avatar-btn">
-                            <i class="fas fa-camera"></i> Change Avatar
-                        </button>
-                    </div>
-                    
-                    <div class="profile-info-section">
-                        <div class="form-group">
-                            <label for="profile-name">
-                                <i class="fas fa-user"></i> Full Name
-                            </label>
-                            <input type="text" id="profile-name" placeholder="Enter your full name" readonly>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="profile-username">
-                                <i class="fas fa-user-circle"></i> Username
-                            </label>
-                            <input type="text" id="profile-username" placeholder="Enter your username" readonly>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="profile-email">
-                                <i class="fas fa-envelope"></i> Email
-                            </label>
-                            <input type="email" id="profile-email" placeholder="email@example.com" readonly>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="profile-joined">
-                                <i class="fas fa-calendar"></i> Member Since
-                            </label>
-                            <input type="text" id="profile-joined" value="February 2026" readonly>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary close-modal">Close</button>
-                <button class="btn-primary" id="edit-profile-btn">
-                    <i class="fas fa-edit"></i> Edit Profile
-                </button>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3><i class="fas fa-user"></i> User Profile</h3>
+          <button class="btn-icon close-modal"><i class="fas fa-times"></i></button>
         </div>
-    </div>
-    
-    <!-- Settings Modal (New) -->
-    <div class="modal" id="settings-user-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-cog"></i> Settings</h3>
-                <button class="btn-icon close-modal">
-                    <i class="fas fa-times"></i>
-                </button>
+        <div class="modal-body">
+          <div class="profile-section">
+            <div class="profile-avatar-section">
+              <div class="profile-avatar-large" id="profile-avatar-display">
+                <i class="fas fa-user" id="avatar-icon"></i>
+                <img id="avatar-image" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%;" alt="User Avatar" />
+              </div>
+              <input type="file" id="avatar-file-input" accept="image/*" hidden />
+              <button class="btn-secondary" id="change-avatar-btn"><i class="fas fa-camera"></i> Change Avatar</button>
             </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h4>Appearance</h4>
-                    <div class="setting-item">
-                        <label>Theme</label>
-                        <select id="user-theme-select">
-                            <option value="dark">Dark</option>
-                            <option value="light">Light</option>
-                            <option value="auto">Auto</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Voice & Audio</h4>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="user-voice-enabled" checked>
-                            Enable voice input
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="user-tts-enabled" checked>
-                            Enable text-to-speech
-                        </label>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Privacy & Data</h4>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="user-save-history" checked>
-                            Save chat history
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="user-analytics" checked>
-                            Share usage analytics
-                        </label>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Notifications</h4>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="user-notifications" checked>
-                            Enable notifications
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="user-sound-effects" checked>
-                            Enable sound effects
-                        </label>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Danger Zone</h4>
-                    <div class="setting-item">
-                        <button class="btn-secondary clear-btn" id="clear-all-chats-btn">
-                            <i class="fas fa-trash"></i> Clear all chats
-                        </button>
-                    </div>
-                    <div class="setting-item">
-                        <button class="btn-secondary clear-btn" id="reset-settings-btn">
-                            <i class="fas fa-undo"></i> Reset to defaults
-                        </button>
-                    </div>
-                </div>
+            <div class="profile-info-section">
+              <div class="form-group">
+                <label for="profile-name"><i class="fas fa-user"></i> Full Name</label>
+                <input type="text" id="profile-name" placeholder="Enter your full name" readonly />
+              </div>
+              <div class="form-group">
+                <label for="profile-username"><i class="fas fa-user-circle"></i> Username</label>
+                <input type="text" id="profile-username" placeholder="Enter your username" readonly />
+              </div>
+              <div class="form-group">
+                <label for="profile-email"><i class="fas fa-envelope"></i> Email</label>
+                <input type="email" id="profile-email" placeholder="email@example.com" readonly />
+              </div>
+              <div class="form-group">
+                <label for="profile-joined"><i class="fas fa-calendar"></i> Member Since</label>
+                <input type="text" id="profile-joined" value="February 2026" readonly />
+              </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn-secondary close-modal">Cancel</button>
-                <button class="btn-primary" id="save-user-settings-btn">
-                    <i class="fas fa-save"></i> Save Settings
-                </button>
-            </div>
+          </div>
         </div>
+        <div class="modal-footer">
+          <button class="btn-secondary close-modal">Close</button>
+          <button class="btn-primary" id="edit-profile-btn"><i class="fas fa-edit"></i> Edit Profile</button>
+        </div>
+      </div>
     </div>
-</body>
+
+    <!-- ═══════════════════════════════════════ SCRIPTS -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="voice_websocket.js"></script>
+    <script src="voice_integration.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

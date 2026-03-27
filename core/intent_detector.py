@@ -1,4 +1,4 @@
-from ai.llm_client import LLMClient 
+from core.ai.llm_client import LLMClient 
 
 class IntentDetector:
 
@@ -52,7 +52,12 @@ User wants to open an application or program.
 Examples:
 - open chrome
 - launch vscode
+- open vs code
 - start calculator
+- open file explorer
+- open windows explorer
+- open whatsapp
+- Help me organize my files by date and type
 
 CREATE_DIR
 User wants to create a folder/directory.
@@ -66,6 +71,7 @@ Examples:
 - system info
 - show memory usage
 - cpu usage
+- Check my system health and suggest optimizations
 
 If input does not match, return UNKNOWN.
 
