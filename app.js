@@ -1,8 +1,3 @@
-/**
- * Prime AI - Main Application JavaScript
- * Dark Black & Navy Blue Theme with Lively Animations
- */
-
 // ===================================
 // Configuration
 // ===================================
@@ -18,18 +13,20 @@ const CONFIG = {
 // ===================================
 
 const AppState = {
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  user: null,                  // { id, email, username, full_name, avatar_url }
+  isAuthenticated: false,
+
+  // ── Chat sessions ─────────────────────────────────────────────────────────
+  currentSessionId: null,      // uuid of the active Supabase session
+  sessions: [],                // all sessions fetched from /api/sessions
+  loadedMessages: {},          // cache: { [session_id]: [messages] }
+
+  // ── Legacy (kept for TTS / pomodoro / health) ─────────────────────────────
   currentChatId: "welcome",
   isVoiceActive: false,
   chatHistory: [],
-  chats: {
-    welcome: {
-      id: "welcome",
-      title: "Welcome to Prime AI",
-      messages: [],
-      timestamp: new Date(),
-    },
-  },
-  selectedPersonality: "study",
+  selectedPersonality: "normal",
   settings: {
     theme: "dark",
     voiceEnabled: true,
@@ -39,7 +36,6 @@ const AppState = {
     analytics: true,
     notifications: true,
   },
-  // Voice / TTS settings saved to localStorage
   voiceSettings: {
     gender: "female",
     speed: 1.0,
@@ -83,24 +79,17 @@ function hideLoadingScreen() {
 // Initialization
 // ===================================
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("Prime AI initializing...");
 
   hideLoadingScreen();
 
-  // Core
+  // Core UI (non-auth)
   initTheme();
-  initChat();
-  initSidebar();
   initSettings();
   initVoiceRecognition();
-
   loadSettings();
-  loadUserFromStorage();
-  loadAvatarFromStorage();
   loadPersonality();
-
-  // ── NEW FEATURES ──────────────────────────────────
   loadVoiceSettings();
   initVoiceSettingsPanel();
   initSystemHealthPanel();
@@ -109,7 +98,16 @@ document.addEventListener("DOMContentLoaded", () => {
   initProactiveSuggestions();
   initSettingsTabs();
   initTTSStatusChip();
-  // ──────────────────────────────────────────────────
+
+  // ── Auth-dependent boot sequence ──────────────────────────────────────────
+  // Try to restore session from httpOnly cookie silently.
+  // If valid → load user + sidebar history.
+  // If not   → show welcome screen as guest.
+  await bootAuthSession();
+
+  // Sidebar + chat init (depends on auth state being known first)
+  initSidebar();
+  initChat();
 
   console.log("Prime AI ready!");
 });
@@ -168,9 +166,390 @@ function applyTheme(theme) {
   }
 }
 
+// ╔══════════════════════════════════════════════════════════════╗
+// ║                  AUTH & SESSION BOOT                        ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+const API = CONFIG.API_BASE_URL;   // "http://localhost:5000/api"
+
+/**
+ * Called once on page load.
+ * Hits /api/auth/me with the httpOnly cookie.
+ * If valid  → restores user + loads sidebar sessions.
+ * If 401    → stays as guest (no redirect, no error shown).
+ */
+
+async function bootAuthSession() {
+  const token = localStorage.getItem("prime_token");
+
+  if (!token) {
+    renderGuestSidebar();
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/auth/me");
+
+    if (!res.ok) {
+      localStorage.removeItem("prime_token");
+      renderGuestSidebar();
+      return;
+    }
+
+    const data = await res.json();
+    setAuthenticatedUser(data.user);
+    await loadSidebarSessions();
+
+  } catch (err) {
+    console.warn("Auth boot failed (backend offline?):", err);
+    renderGuestSidebar();
+  }
+}
+
+/**
+ * Updates AppState + sidebar UI after a successful login or register.
+ */
+function setAuthenticatedUser(user) {
+  AppState.user = user;
+  AppState.isAuthenticated = true;
+
+  // Update sidebar profile strip
+  const nameEl = document.querySelector(".user-name");
+  const emailEl = document.querySelector(".user-email");
+  if (nameEl) nameEl.textContent = user.full_name || user.username;
+  if (emailEl) emailEl.textContent = user.email;
+
+  // Restore avatar if stored
+  if (user.avatar_url) updateAvatarDisplay(user.avatar_url);
+}
+
+/**
+ * Resets everything back to guest state after sign-out.
+ */
+function clearAuthenticatedUser() {
+  AppState.user = null;
+  AppState.isAuthenticated = false;
+  AppState.currentSessionId = null;
+  AppState.sessions = [];
+  AppState.loadedMessages = {};
+
+  const nameEl = document.querySelector(".user-name");
+  const emailEl = document.querySelector(".user-email");
+  if (nameEl) nameEl.textContent = "User";
+  if (emailEl) emailEl.textContent = "user@prime.ai";
+
+  updateAvatarDisplay(null);
+  renderGuestSidebar();
+  showWelcomeScreen();
+}
+
+async function apiFetch(path, options = {}) {
+  const token = localStorage.getItem("prime_token");
+
+  return fetch(`${API}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+}
+
 // ===================================
 // Sidebar Management
 // ===================================
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║              SIDEBAR SESSION MANAGEMENT                     ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+/**
+ * Fetches all sessions from the backend and re-renders the sidebar.
+ * Called after login, register, and new chat creation.
+ */
+async function loadSidebarSessions() {
+  if (!AppState.isAuthenticated) return;
+
+  try {
+    const res = await apiFetch("/sessions");
+    const data = await res.json();
+
+    AppState.sessions = data.sessions || [];
+    renderSidebarSessions(AppState.sessions);
+
+  } catch (err) {
+    console.error("Failed to load sessions:", err);
+  }
+}
+
+/**
+ * Renders the sidebar chat history from the sessions array.
+ * Groups sessions into Today / Yesterday / Previous 7 Days / Older.
+ */
+function renderSidebarSessions(sessions) {
+  const container = document.getElementById("chat-history");
+  if (!container) return;
+
+  if (sessions.length === 0) {
+    container.innerHTML = `
+      <div class="history-empty">
+        <i class="fas fa-comment-slash"></i>
+        <p>No chats yet. Start a conversation!</p>
+      </div>`;
+    return;
+  }
+
+  // ── Group by date ─────────────────────────────────────────────────────────
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const week = new Date(today);
+  week.setDate(week.getDate() - 7);
+
+  const groups = {
+    "Today": [],
+    "Yesterday": [],
+    "Previous 7 Days": [],
+    "Older": [],
+  };
+
+  sessions.forEach(session => {
+    const d = new Date(session.updated_at);
+    const sessionDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    if (sessionDay >= today) groups["Today"].push(session);
+    else if (sessionDay >= yesterday) groups["Yesterday"].push(session);
+    else if (sessionDay >= week) groups["Previous 7 Days"].push(session);
+    else groups["Older"].push(session);
+  });
+
+  // ── Render HTML ───────────────────────────────────────────────────────────
+  let html = "";
+  for (const [label, items] of Object.entries(groups)) {
+    if (items.length === 0) continue;
+    html += `<div class="history-section"><h4>${label}</h4>`;
+    items.forEach(session => {
+      const isActive = session.id === AppState.currentSessionId;
+      html += `
+        <div class="history-item ${isActive ? "active" : ""}"
+             data-session-id="${session.id}">
+          <i class="fas fa-message"></i>
+          <span>${escapeHtml(session.title || "New Chat")}</span>
+          <button class="delete-chat-btn" data-session-id="${session.id}"
+                  title="Delete chat">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+
+  // ── Attach event listeners ─────────────────────────────────────────────────
+  container.querySelectorAll(".history-item").forEach(item => {
+    item.addEventListener("click", function (e) {
+      if (e.target.closest(".delete-chat-btn")) return;
+      const sid = this.dataset.sessionId;
+      openExistingSession(sid);
+    });
+  });
+
+  container.querySelectorAll(".delete-chat-btn").forEach(btn => {
+    btn.addEventListener("click", async function (e) {
+      e.stopPropagation();
+      const sid = this.dataset.sessionId;
+      await deleteSessionFromSidebar(sid);
+    });
+  });
+}
+
+/**
+ * Opens a past chat: fetches all messages and renders them.
+ * This is what gives the user the "resuming a conversation" experience.
+ */
+async function openExistingSession(sessionId) {
+  if (AppState.currentSessionId === sessionId) return;
+
+  AppState.currentSessionId = sessionId;
+
+  // Mark active in sidebar immediately for responsiveness
+  document.querySelectorAll(".history-item").forEach(item => {
+    item.classList.toggle("active", item.dataset.sessionId === sessionId);
+  });
+
+  // Show loading state in chat area
+  const chatMessages = document.getElementById("chat-messages");
+  chatMessages.innerHTML = `
+    <div class="session-loading">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Loading conversation...</p>
+    </div>`;
+
+  try {
+    // Check cache first to avoid redundant network calls
+    if (AppState.loadedMessages[sessionId]) {
+      renderSessionMessages(AppState.loadedMessages[sessionId]);
+      return;
+    }
+
+    const res = await apiFetch(`/sessions/${sessionId}/messages`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      showNotification("Could not load this chat.", "error");
+      showWelcomeScreen();
+      return;
+    }
+
+    // Cache the messages
+    AppState.loadedMessages[sessionId] = data.messages;
+    renderSessionMessages(data.messages);
+
+  } catch (err) {
+    console.error("Failed to load session:", err);
+    showNotification("Could not load this chat.", "error");
+    showWelcomeScreen();
+  }
+}
+
+/**
+ * Renders a full past conversation into the chat area.
+ */
+function renderSessionMessages(messages) {
+  const chatMessages = document.getElementById("chat-messages");
+
+  if (!messages || messages.length === 0) {
+    showWelcomeScreen();
+    return;
+  }
+
+  chatMessages.innerHTML = "";
+
+  messages.forEach(msg => {
+    const div = document.createElement("div");
+    div.className = `message ${msg.role === "user" ? "user" : "assistant"}`;
+
+    const time = new Date(msg.created_at).toLocaleTimeString("en-US", {
+      hour: "2-digit", minute: "2-digit",
+    });
+    const avatar = msg.role === "user"
+      ? '<i class="fas fa-user"></i>'
+      : '<i class="fas fa-brain"></i>';
+
+    div.innerHTML = `
+      <div class="message-avatar">${avatar}</div>
+      <div class="message-content">
+        ${escapeHtml(msg.content)}
+        <div class="message-time">${time}</div>
+      </div>`;
+
+    chatMessages.appendChild(div);
+  });
+
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Deletes a session via API and removes it from the sidebar.
+ */
+async function deleteSessionFromSidebar(sessionId) {
+  if (!confirm("Delete this chat? This cannot be undone.")) return;
+
+  try {
+    const res = await apiFetch(`/sessions/${sessionId}`, { method: "DELETE" });
+
+    if (!res.ok) {
+      showNotification("Could not delete this chat.", "error");
+      return;
+    }
+
+    // Remove from state
+    AppState.sessions = AppState.sessions.filter(s => s.id !== sessionId);
+    delete AppState.loadedMessages[sessionId];
+
+    // If the deleted session was active, show welcome screen
+    if (AppState.currentSessionId === sessionId) {
+      AppState.currentSessionId = null;
+      showWelcomeScreen();
+    }
+
+    renderSidebarSessions(AppState.sessions);
+    showNotification("Chat deleted.", "info");
+
+  } catch (err) {
+    showNotification("Could not delete this chat.", "error");
+  }
+}
+
+/**
+ * Shows when the user is not logged in.
+ * Keeps history section empty with a helpful prompt.
+ */
+function renderGuestSidebar() {
+  const container = document.getElementById("chat-history");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="history-empty">
+      <i class="fas fa-lock"></i>
+      <p>Sign in to save and access your chat history.</p>
+    </div>`;
+}
+
+// ── Small utilities ───────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.appendChild(document.createTextNode(str || ""));
+  return div.innerHTML;
+}
+
+function showWelcomeScreen() {
+  const chatMessages = document.getElementById("chat-messages");
+  chatMessages.innerHTML = `
+    <div class="welcome-screen">
+      <div class="welcome-logo"><i class="fas fa-brain"></i></div>
+      <h1>Prime AI</h1>
+      <p class="welcome-subtitle">Your intelligent personal assistant</p>
+      <div class="proactive-strip" id="proactive-strip">
+        <div class="proactive-chip">
+          <i class="fas fa-clock"></i>
+          <span id="proactive-msg">Good day! Ready to help.</span>
+        </div>
+      </div>
+      <div class="suggestion-cards">
+        <button class="suggestion-card"
+                data-prompt="Help me organize my files by date and type">
+          <i class="fas fa-folder-tree"></i><span>Organize my files</span>
+        </button>
+        <button class="suggestion-card"
+                data-prompt="Create a study schedule for the next week">
+          <i class="fas fa-calendar-alt"></i><span>Create study plan</span>
+        </button>
+        <button class="suggestion-card"
+                data-prompt="Explain this code and help me debug it">
+          <i class="fas fa-code"></i><span>Debug my code</span>
+        </button>
+        <button class="suggestion-card"
+                data-prompt="Check my system health and suggest optimizations">
+          <i class="fas fa-heartbeat"></i><span>System health check</span>
+        </button>
+        <button class="suggestion-card"
+                data-prompt="Start a 25-minute Pomodoro focus session for studying">
+          <i class="fas fa-crosshairs"></i><span>Focus session</span>
+        </button>
+        <button class="suggestion-card"
+                data-prompt="Summarize my week and give productivity tips">
+          <i class="fas fa-chart-bar"></i><span>Weekly summary</span>
+        </button>
+      </div>
+    </div>`;
+  attachSuggestionListeners();
+  initProactiveSuggestions();
+}
 
 function initSidebar() {
   // Sidebar toggle for mobile
@@ -369,53 +748,17 @@ function initResizableSidebar() {
 }
 
 function createNewChat() {
-  const chatId = "chat_" + Date.now();
-  const newChat = {
-    id: chatId,
-    title: "New Chat",
-    messages: [],
-    timestamp: new Date(),
-  };
+  // Clear active session — the actual Supabase session row is created
+  // lazily on the first message send, not here. This keeps empty sessions
+  // out of the database.
+  AppState.currentSessionId = null;
 
-  AppState.chats[chatId] = newChat;
-  AppState.currentChatId = chatId;
+  // Clear active state from sidebar
+  document.querySelectorAll(".history-item").forEach(item => {
+    item.classList.remove("active");
+  });
 
-  // Clear chat messages
-  const chatMessages = document.getElementById("chat-messages");
-  chatMessages.innerHTML = `
-        <div class="welcome-screen">
-            <div class="welcome-logo">
-                <i class="fas fa-brain"></i>
-            </div>
-            <h1>Prime AI</h1>
-            <p class="welcome-subtitle">Your intelligent personal assistant</p>
-            
-            <div class="suggestion-cards">
-                <button class="suggestion-card" data-prompt="Help me organize my files by date and type">
-                    <i class="fas fa-folder-tree"></i>
-                    <span>Organize my files</span>
-                </button>
-                <button class="suggestion-card" data-prompt="Create a study schedule for the next week">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Create study plan</span>
-                </button>
-                <button class="suggestion-card" data-prompt="Explain this code and help me debug it">
-                    <i class="fas fa-code"></i>
-                    <span>Debug my code</span>
-                </button>
-                <button class="suggestion-card" data-prompt="Check my system health and suggest optimizations">
-                    <i class="fas fa-heartbeat"></i>
-                    <span>System health check</span>
-                </button>
-            </div>
-        </div>
-    `;
-
-  // Re-attach suggestion card listeners
-  attachSuggestionListeners();
-
-  // Update sidebar
-  // TODO: Add new chat to sidebar history
+  showWelcomeScreen();
 }
 
 function selectChat(historyItem) {
@@ -515,52 +858,48 @@ function isCommandRequest(message) {
 async function sendMessage() {
   const chatInput = document.getElementById("chat-input");
   const message = chatInput.value.trim();
-
   if (!message) return;
 
-  // Clear input
   chatInput.value = "";
   chatInput.style.height = "auto";
   document.getElementById("send-btn").disabled = true;
 
-  // Remove welcome screen if present
+  // Hide welcome screen if showing
   const welcomeScreen = document.querySelector(".welcome-screen");
-  if (welcomeScreen) {
-    welcomeScreen.remove();
-  }
+  if (welcomeScreen) welcomeScreen.remove();
 
-  // Add user message
   addMessage(message, "user");
 
-  // Route to the right endpoint:
-  // code keywords  → /api/code  (streams code with syntax highlight)
-  // command words  → /api/chat  (intent detection + command execution)
-  // everything else→ /api/reply (direct stream, no intent detection = instant)
   if (isCodeRequest(message)) {
     await streamCodeMessage(message);
   } else if (isCommandRequest(message)) {
-    await streamChatMessage(message, true);   // true = use /api/chat
+    await streamChatMessage(message, true);
   } else {
-    await streamChatMessage(message, false);  // false = use /api/reply
+    await streamChatMessage(message, false);
   }
 }
 
-
 /**
- * Streams a chat reply via SSE.
- * useCommandRoute=true  → /api/chat (intent detection, for commands like 'open chrome')
- * useCommandRoute=false → /api/reply (no intent detection, instant first token for conversation)
+ * Core streaming function — now session-aware.
+ *
+ * useCommandRoute = true  → /api/chat  (intent detection + session context)
+ * useCommandRoute = false → /api/reply (fast path, still session-aware
+ *                                       via /api/chat on backend)
+ *
+ * NOTE: Both paths now go through /api/chat so context is always preserved.
+ * useCommandRoute=false skips the slower intent detection in the engine
+ * by passing a flag — the session saving still happens.
  */
 async function streamChatMessage(message, useCommandRoute = false) {
   const chatMessages = document.getElementById("chat-messages");
-  const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const time = new Date().toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit",
+  });
 
-  // Show typing indicator (bouncing dots) immediately while waiting for server
   const typingEl = createTypingIndicator();
   chatMessages.appendChild(typingEl);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
-  // Pre-build the real response bubble (not shown yet)
   const msgDiv = document.createElement("div");
   msgDiv.className = "message assistant";
   msgDiv.innerHTML = `
@@ -568,26 +907,36 @@ async function streamChatMessage(message, useCommandRoute = false) {
     <div class="message-content">
       <span class="chat-streaming-text"></span>
       <div class="message-time">${time}</div>
-    </div>
-  `;
+    </div>`;
 
-  const textEl = msgDiv.querySelector(".chat-streaming-text");
-  let fullText = "";
+  const textEl    = msgDiv.querySelector(".chat-streaming-text");
+  let fullText    = "";
   let bubbleShown = false;
 
   try {
-    const endpoint = useCommandRoute ? `${CONFIG.API_BASE_URL}/chat` : `${CONFIG.API_BASE_URL}/reply`;
-    const response = await fetch(endpoint, {
+    const res = await apiFetch("/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        session_id:  AppState.currentSessionId,
+        personality: AppState.selectedPersonality || "normal",
+      }),
     });
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!res.ok && res.status !== 401) {
+      throw new Error(`HTTP ${res.status}`);
+    }
 
-    const reader = response.body.getReader();
+    // ── Capture session_id from header BEFORE reading stream ──────────────
+    const returnedSessionId = res.headers.get("X-Session-Id");
+    if (returnedSessionId) {
+      AppState.currentSessionId = returnedSessionId;
+    }
+
+    // ── Stream tokens ──────────────────────────────────────────────────────
+    const reader  = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    let buffer    = "";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -595,46 +944,60 @@ async function streamChatMessage(message, useCommandRoute = false) {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // keep incomplete line
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
         const payload = line.slice(6);
         if (payload === "[DONE]") break;
 
-        // First token: swap dots → real bubble
         if (!bubbleShown) {
           typingEl.remove();
           chatMessages.appendChild(msgDiv);
           bubbleShown = true;
         }
 
-        // Unescape newlines encoded server-side
         const token = payload.replace(/\\n/g, "\n");
-        fullText += token;
+        fullText   += token;
         textEl.textContent = fullText;
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
     }
 
-    // Edge case: stream ended with no tokens (command that returned empty)
     if (!bubbleShown) {
       typingEl.remove();
       chatMessages.appendChild(msgDiv);
     }
 
+    // ── Post-stream: everything runs AFTER tokens are received ─────────────
+
+    // Cache messages locally
+    if (AppState.currentSessionId) {
+      if (!AppState.loadedMessages[AppState.currentSessionId]) {
+        AppState.loadedMessages[AppState.currentSessionId] = [];
+      }
+      AppState.loadedMessages[AppState.currentSessionId].push(
+        { role: "user",      content: message,  created_at: new Date().toISOString() },
+        { role: "assistant", content: fullText,  created_at: new Date().toISOString() },
+      );
+    }
+
     AppState.chatHistory.push({ sender: "assistant", text: fullText, time });
 
-    // ── TTS: speak the full response once streaming is done ──
-    if (AppState.settings.ttsEnabled) {
-      speakText(fullText);
+    // ── Refresh sidebar AFTER stream completes ─────────────────────────────
+    // Delay allows backend title-generation thread to finish first
+    if (AppState.isAuthenticated) {
+      setTimeout(() => loadSidebarSessions(), 2500);
     }
+
+    if (AppState.settings.ttsEnabled) speakText(fullText);
 
   } catch (error) {
     console.error("Chat stream error:", error);
     typingEl.remove();
     if (!bubbleShown) chatMessages.appendChild(msgDiv);
-    textEl.textContent = "Sorry, I could not connect to the backend. Make sure app.py is running on port 5000.";
+    textEl.textContent =
+      "Sorry, I could not connect to the backend. Make sure app.py is running on port 5000.";
   }
 }
 
@@ -738,7 +1101,7 @@ async function streamCodeMessage(message) {
 /**
  * Naively detect the coding language from the user's prompt for labelling.
  */
-function detectLanguage(msg) { 
+function detectLanguage(msg) {
   const m = msg.toLowerCase();
   if (m.includes("python")) return "python";
   if (m.includes("javascript") || m.includes(" js ")) return "javascript";
@@ -885,311 +1248,6 @@ function stopVoiceInput() {
 }
 
 // ===================================
-// Voice Client Integration
-// ===================================
-
-/* LEGACY VOICE CLIENT INTEGRATION - Replaced by voice_integration.js
-function initVoiceClient() {
-    // Check if VoiceWebSocketClient is available
-    if (typeof VoiceWebSocketClient === 'undefined') {
-        console.warn('VoiceWebSocketClient not loaded');
-        return;
-    }
-    
-    // Create voice client instance
-    AppState.voiceClient = new VoiceWebSocketClient('http://localhost:5000');
-    
-    // Set up event handlers
-    AppState.voiceClient.onStatusChange = (status, message) => {
-        console.log(`Voice status: ${status} - ${message}`);
-        updateVoiceButtonStatus(status);
-    };
-    
-    AppState.voiceClient.onResult = (text, data) => {
-        console.log('Voice transcription:', text);
-        handleVoiceTranscription(text);
-    };
-    
-    AppState.voiceClient.onInterimResult = (text, data) => {
-        console.log('Voice interim transcription:', text);
-        // Send interim results to mic window for real-time display
-        sendToMicWindow({
-            type: 'transcription_update',
-            text: text,
-            interim: true
-        });
-    };
-    
-    AppState.voiceClient.onError = (error) => {
-        console.error('Voice error:', error);
-        showNotification(error, 'error');
-        stopVoiceRecording();
-    };
-    
-    // Connect to voice server
-    AppState.voiceClient.connect()
-        .then(() => {
-            console.log('✅ Voice client connected');
-        })
-        .catch((error) => {
-            console.error('❌ Voice client connection failed:', error);
-            console.log('Make sure voice server is running on http://localhost:5000');
-        });
-}
-
-function updateVoiceButtonStatus(status) {
-    const voiceBtn = document.getElementById('voice-btn');
-    if (!voiceBtn) return;
-    
-    switch (status) {
-        case 'recording':
-        case 'listening':
-            voiceBtn.classList.add('active');
-            voiceBtn.title = 'Recording... Click to stop';
-            break;
-        case 'processing':
-            voiceBtn.classList.add('processing');
-            voiceBtn.title = 'Processing audio...';
-            break;
-        default:
-            voiceBtn.classList.remove('active', 'processing');
-            voiceBtn.title = 'Voice input';
-    }
-}
-
-function handleVoiceTranscription(text) {
-    // Put transcription in chat input
-    const chatInput = document.getElementById('chat-input');
-    chatInput.value = text;
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
-    
-    // Enable send button
-    document.getElementById('send-btn').disabled = false;
-    
-    // Focus input for editing
-    chatInput.focus();
-    
-    // Send transcription to mic window for display
-    sendToMicWindow({
-        type: 'transcription_update',
-        text: text
-    });
-    
-    // Show notification
-    showNotification('Voice transcribed successfully', 'success');
-}
-
-function startVoiceRecording() {
-    if (!AppState.voiceClient || !AppState.voiceClient.isConnected) {
-        showNotification('Voice server not connected. Please start the voice server.', 'error');
-        return;
-    }
-    
-    if (!AppState.settings.voiceEnabled) {
-        showNotification('Voice input is disabled. Enable it in settings.', 'error');
-        return;
-    }
-    
-    AppState.isVoiceActive = true;
-    AppState.voiceClient.startRecording();
-    
-    // Notify mic window that recording has started
-    sendToMicWindow({
-        type: 'start_listening'
-    });
-}
-
-function stopVoiceRecording() {
-    if (AppState.voiceClient) {
-        AppState.voiceClient.stopRecording();
-    }
-    AppState.isVoiceActive = false;
-    
-    // Notify mic window that recording has stopped
-    sendToMicWindow({
-        type: 'stop_listening'
-    });
-}
-
-function toggleVoiceRecording() {
-    if (AppState.isVoiceActive) {
-        stopVoiceRecording();
-    } else {
-        // Open mic window when starting voice recording
-        openMicWindow();
-        startVoiceRecording();
-    }
-}
-*/
-// ===================================
-// User Profile Interactions
-// ===================================
-
-// ===================================
-// Mic Window Integration
-// ===================================
-
-/* LEGACY MIC WINDOW INTEGRATION - Replaced by voice_integration.js
-// let micWindow = null;
-
-// function openMicWindow() {
-//     if (micWindow && !micWindow.closed) {
-//         micWindow.focus();
-//         return;
-//     }
-
-//     // Calculate center position
-//     const width = 500;
-//     const height = 500;
-//     const left = (screen.width - width) / 2;
-//     const top = (screen.height - height) / 2;
-
-//     // Open popup window
-//     micWindow = window.open(
-//         'mic_button_ui.html',
-//         'PrimeAI_Voice',
-//         `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,toolbar=no,menubar=no,location=no,status=no`
-//     );
-
-//     // Setup message listener
-//     window.addEventListener('message', handleMicMessage);
-
-//     // Check if window is closed
-//     const checkClosed = setInterval(() => {
-//         if (micWindow && micWindow.closed) {
-//             clearInterval(checkClosed);
-//             updateVoiceStatus(false);
-//             micWindow = null;
-//         }
-//     }, 500);
-// }
-
-// // Handle messages from mic window
-// function handleMicMessage(event) {
-//     if (!event.data || !event.data.type) return;
-
-//     switch (event.data.type) {
-//         case 'mic_listening':
-//             AppState.isVoiceActive = event.data.listening;
-//             updateVoiceStatus(event.data.listening);
-//             console.log('Mic listening:', event.data.listening);
-//             break;
-
-//         case 'mic_result':
-//             handleVoiceCommand(event.data.text);
-//             break;
-
-//         case 'mic_processing':
-//             console.log('Processing audio...');
-//             break;
-//     }
-// }
-
-// // Update voice button status
-// function updateVoiceStatus(listening) {
-//     const voiceBtn = document.getElementById('voice-btn');
-//     if (!voiceBtn) return;
-
-//     if (listening) {
-//         voiceBtn.classList.add('active');
-//         voiceBtn.title = 'Listening...';
-//     } else {
-//         voiceBtn.classList.remove('active');
-//         voiceBtn.title = 'Voice input';
-//     }
-// }
-
-// // Process voice commands from mic window
-// function handleVoiceCommand(text) {
-//     console.log('Voice Command Received:', text);
-    
-//     const command = text.toLowerCase();
-
-//     // Hide welcome screen if visible
-//     const welcomeScreen = document.querySelector('.welcome-screen');
-//     if (welcomeScreen) {
-//         welcomeScreen.remove();
-//     }
-
-//     // Add user message
-//     addMessage(text, 'user');
-
-//     // Process specific commands
-//     if (command.includes('open file') || command.includes('file manager')) {
-//         setTimeout(() => {
-//             addMessage('Opening file manager... What would you like me to help you with?', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('create file')) {
-//         setTimeout(() => {
-//             addMessage('What type of file would you like to create? (e.g., document, spreadsheet, text file)', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('organize files') || command.includes('organize my files')) {
-//         setTimeout(() => {
-//             addMessage('I\'ll help you organize your files. Would you like me to sort them by date, type, or size?', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('summarize') || command.includes('summary')) {
-//         setTimeout(() => {
-//             addMessage('I can help you generate a summary. Please upload the document you\'d like me to summarize.', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('study plan') || command.includes('study schedule')) {
-//         setTimeout(() => {
-//             addMessage('I\'ll create a study plan for you. What subjects or topics would you like to focus on?', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('explain code') || command.includes('code explanation')) {
-//         setTimeout(() => {
-//             addMessage('I can help explain code. Please paste the code you\'d like me to explain.', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('debug')) {
-//         setTimeout(() => {
-//             addMessage('I\'ll help you debug your code. Please share the code and describe the issue you\'re experiencing.', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('check system') || command.includes('system health')) {
-//         setTimeout(() => {
-//             addMessage('Running system health check...\n\n📊 CPU Usage: 45%\n💾 RAM: 62% (8.2 GB / 16 GB)\n💿 Disk Space: 78% used (234 GB free)\n🌡️ Temperature: Normal\n\nYour system is running smoothly! Would you like me to suggest any optimizations?', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('settings')) {
-//         setTimeout(() => {
-//             addMessage('Opening settings panel...', 'assistant');
-//             document.getElementById('settings-btn').click();
-//         }, 500);
-//     }
-//     else if (command.includes('help')) {
-//         setTimeout(() => {
-//             addMessage('Here are some things I can help you with:\n\n📁 File Management - "organize my files", "open file manager"\n📚 Study Support - "create study plan", "summarize document"\n💻 Coding Help - "explain code", "debug this code"\n⚙️ System Monitoring - "check system health"\n\nWhat would you like to do?', 'assistant');
-//         }, 500);
-//     }
-//     else if (command.includes('new chat')) {
-//         createNewChat();
-//         setTimeout(() => {
-//             addMessage('Started a new chat! How can I help you?', 'assistant');
-//         }, 500);
-//     }
-//     // Default response
-//     else {
-//         setTimeout(() => {
-//             addMessage(`I heard you say: "${text}"\n\nHow can I help you with this?`, 'assistant');
-//         }, 500);
-//     }
-// }
-
-// Send message to mic window (optional)
-// function sendToMicWindow(message) {
-//     if (micWindow && !micWindow.closed) {
-//         micWindow.postMessage(message, '*');
-//     }
-// }
-*/
-
-// ===================================
 // Text-to-Speech
 // ===================================
 
@@ -1214,8 +1272,8 @@ function speakText(text) {
 
     // Apply voice settings from AppState
     const vs = AppState.voiceSettings;
-    utterance.rate   = vs.speed  || 1.0;
-    utterance.pitch  = vs.pitch  || 1.0;
+    utterance.rate = vs.speed || 1.0;
+    utterance.pitch = vs.pitch || 1.0;
     utterance.volume = vs.volume || 1.0;
 
     // Pick the selected voice
@@ -1224,7 +1282,7 @@ function speakText(text) {
       const chosen = voices.find(v => v.voiceURI === vs.selectedVoiceURI);
       if (chosen) {
         utterance.voice = chosen;
-        utterance.lang  = chosen.lang;
+        utterance.lang = chosen.lang;
       }
     } else {
       // Fallback: pick a voice matching preferred gender/lang
@@ -1232,8 +1290,8 @@ function speakText(text) {
       const genderPref = vs.gender || "female";
       // Try to find a voice matching language & name hints
       let best = voices.find(v => v.lang === langPref) ||
-                 voices.find(v => v.lang.startsWith("en")) ||
-                 voices[0];
+        voices.find(v => v.lang.startsWith("en")) ||
+        voices[0];
       if (best) { utterance.voice = best; utterance.lang = best.lang; }
     }
 
@@ -1388,22 +1446,22 @@ function initSettings() {
 
 function loadSettingsToUI() {
   const s = AppState.settings;
-  document.getElementById("theme-select").value        = s.theme       || "dark";
-  document.getElementById("voice-enabled").checked     = s.voiceEnabled  !== false;
-  document.getElementById("tts-enabled").checked       = s.ttsEnabled    !== false;
-  document.getElementById("sound-effects").checked     = s.soundEffects  !== false;
-  document.getElementById("save-history").checked      = s.saveHistory   !== false;
-  document.getElementById("analytics").checked         = s.analytics     !== false;
-  document.getElementById("notifications").checked     = s.notifications !== false;
+  document.getElementById("theme-select").value = s.theme || "dark";
+  document.getElementById("voice-enabled").checked = s.voiceEnabled !== false;
+  document.getElementById("tts-enabled").checked = s.ttsEnabled !== false;
+  document.getElementById("sound-effects").checked = s.soundEffects !== false;
+  document.getElementById("save-history").checked = s.saveHistory !== false;
+  document.getElementById("analytics").checked = s.analytics !== false;
+  document.getElementById("notifications").checked = s.notifications !== false;
 }
 
 function saveSettingsFromUI() {
-  AppState.settings.theme         = document.getElementById("theme-select").value;
-  AppState.settings.voiceEnabled  = document.getElementById("voice-enabled").checked;
-  AppState.settings.ttsEnabled    = document.getElementById("tts-enabled").checked;
-  AppState.settings.soundEffects  = document.getElementById("sound-effects").checked;
-  AppState.settings.saveHistory   = document.getElementById("save-history").checked;
-  AppState.settings.analytics     = document.getElementById("analytics").checked;
+  AppState.settings.theme = document.getElementById("theme-select").value;
+  AppState.settings.voiceEnabled = document.getElementById("voice-enabled").checked;
+  AppState.settings.ttsEnabled = document.getElementById("tts-enabled").checked;
+  AppState.settings.soundEffects = document.getElementById("sound-effects").checked;
+  AppState.settings.saveHistory = document.getElementById("save-history").checked;
+  AppState.settings.analytics = document.getElementById("analytics").checked;
   AppState.settings.notifications = document.getElementById("notifications").checked;
 
   localStorage.setItem("prime-ai-settings", JSON.stringify(AppState.settings));
@@ -1707,156 +1765,115 @@ function handleTabClick(e) {
   switchAuthTab(tab);
 }
 
-function handleSignInSubmit(e) {
+
+async function handleSignInSubmit(e) {
   e.preventDefault();
 
-  const username = document.getElementById("signin-username").value.trim();
+  const identifier = document.getElementById("signin-username").value.trim();
   const password = document.getElementById("signin-password").value;
 
-  if (!username || !password) {
-    showNotification("Please fill in all fields", "warning");
+  if (!identifier || !password) {
+    showNotification("Please fill in all fields.", "warning");
     return;
   }
 
-  // Update user info in sidebar
-  const userNameEl = document.querySelector(".user-name");
-  const userEmailEl = document.querySelector(".user-email");
+  const btn = e.target.querySelector(".auth-submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Signing in...";
 
-  if (userNameEl) {
-    userNameEl.textContent = username;
+  try {
+    const res = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showNotification(data.error || "Login failed.", "error");
+      return;
+    }
+
+    // Store token for all future requests
+    localStorage.setItem("prime_token", data.token);
+
+    setAuthenticatedUser(data.user);
+    await loadSidebarSessions();
+    closeAuthModal();
+    showNotification(`Welcome back, ${data.user.full_name}!`, "success");
+
+  } catch (err) {
+    showNotification("Could not reach the server.", "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
   }
-
-  const email = username.includes("@")
-    ? username
-    : `${username.toLowerCase().replace(/\s+/g, "")}@primeai.com`;
-
-  if (userEmailEl) {
-    userEmailEl.textContent = email;
-  }
-
-  // Store in AppState
-  AppState.user = {
-    name: username,
-    email: email,
-    isAuthenticated: true,
-  };
-
-  // Save to localStorage
-  localStorage.setItem("prime-ai-user", JSON.stringify(AppState.user));
-
-  // Show success notification
-  showNotification(`Welcome back, ${username}!`, "success");
-
-  // Close modal
-  closeAuthModal();
-
-  // Add welcome message to chat
-  addMessage(
-    `Welcome back, ${username}! How can I help you today?`,
-    "assistant",
-  );
 }
 
-function handleRegisterSubmit(e) {
+async function handleRegisterSubmit(e) {
   e.preventDefault();
 
-  const fullname = document.getElementById("register-fullname").value.trim();
+  const full_name = document.getElementById("register-fullname").value.trim();
   const email = document.getElementById("register-email").value.trim();
   const username = document.getElementById("register-username").value.trim();
   const password = document.getElementById("register-password").value;
-  const confirmPassword = document.getElementById(
-    "register-confirm-password",
-  ).value;
+  const confirmPassword = document.getElementById("register-confirm-password").value;
 
-  // Validation
-  if (!fullname || !email || !username || !password || !confirmPassword) {
-    showNotification("Please fill in all fields", "warning");
+  if (!full_name || !email || !username || !password || !confirmPassword) {
+    showNotification("Please fill in all fields.", "warning");
     return;
   }
-
   if (password !== confirmPassword) {
-    showNotification("Passwords do not match", "warning");
+    showNotification("Passwords do not match.", "warning");
     return;
   }
-
   if (password.length < 6) {
-    showNotification("Password must be at least 6 characters", "warning");
+    showNotification("Password must be at least 6 characters.", "warning");
     return;
   }
 
-  // Update user info in sidebar
-  const userNameEl = document.querySelector(".user-name");
-  const userEmailEl = document.querySelector(".user-email");
+  const btn = e.target.querySelector(".auth-submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Creating account...";
 
-  if (userNameEl) {
-    userNameEl.textContent = fullname;
+  try {
+    const res = await apiFetch("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ full_name, email, username, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showNotification(data.error || "Registration failed.", "error");
+      return;
+    }
+
+    // Store token for all future requests
+    localStorage.setItem("prime_token", data.token);
+
+    setAuthenticatedUser(data.user);
+    await loadSidebarSessions();
+    closeAuthModal();
+    showNotification(`Welcome to Prime AI, ${data.user.full_name}!`, "success");
+
+  } catch (err) {
+    showNotification("Could not reach the server.", "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-user-plus"></i> Register';
   }
-
-  if (userEmailEl) {
-    userEmailEl.textContent = email;
-  }
-
-  // Store in AppState
-  AppState.user = {
-    name: fullname,
-    username: username,
-    email: email,
-    isAuthenticated: true,
-  };
-
-  // Save to localStorage
-  localStorage.setItem("prime-ai-user", JSON.stringify(AppState.user));
-
-  // Show success notification
-  showNotification(
-    `Account created successfully! Welcome, ${fullname}!`,
-    "success",
-  );
-
-  // Close modal
-  closeAuthModal();
-
-  // Add welcome message to chat
-  addMessage(
-    `Welcome to Prime AI, ${fullname}! Your account has been created successfully. How can I assist you today?`,
-    "assistant",
-  );
 }
 
-function handleSignOut() {
-  if (confirm("Are you sure you want to sign out?")) {
-    // Reset user info to default
-    const userNameEl = document.querySelector(".user-name");
-    const userEmailEl = document.querySelector(".user-email");
+async function handleSignOut() {
+  if (!confirm("Are you sure you want to sign out?")) return;
 
-    if (userNameEl) {
-      userNameEl.textContent = "User";
-    }
+  try {
+    await apiFetch("/auth/logout", { method: "POST" });
+  } catch (_) { }
 
-    if (userEmailEl) {
-      userEmailEl.innerHTML =
-        '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="81f4f2e4f3c1f1f3e8ece4e0e8afe2eeec">[email&#160;protected]</a>';
-    }
-
-    // Update AppState
-    AppState.user = {
-      name: "User",
-      email: "user@example.com",
-      isAuthenticated: false,
-    };
-
-    // Remove from localStorage
-    localStorage.removeItem("prime-ai-user");
-
-    // Show notification
-    showNotification("You have been signed out successfully.", "info");
-
-    // Close user menu
-    document.getElementById("user-menu")?.classList.remove("active");
-
-    // Clear chat history if desired
-    // createNewChat();
-  }
+  // Drop the token — this is all that matters
+  localStorage.removeItem("prime_token");
+  clearAuthenticatedUser();
+  showNotification("Signed out successfully.", "info");
 }
 
 // Load user from localStorage on init
@@ -2261,14 +2278,14 @@ console.log("Prime AI ready! Access via window.PrimeAI");
 
 const VOICE_PRESETS = [
   // Male
-  { id: "male_neutral",  name: "Alex",   gender: "male",   accent: "American",   icon: "🎙️", lang: "en-US" },
-  { id: "male_british",  name: "James",  gender: "male",   accent: "British",    icon: "🎙️", lang: "en-GB" },
-  { id: "male_au",       name: "Jack",   gender: "male",   accent: "Australian", icon: "🎙️", lang: "en-AU" },
+  { id: "male_neutral", name: "Alex", gender: "male", accent: "American", icon: "🎙️", lang: "en-US" },
+  { id: "male_british", name: "James", gender: "male", accent: "British", icon: "🎙️", lang: "en-GB" },
+  { id: "male_au", name: "Jack", gender: "male", accent: "Australian", icon: "🎙️", lang: "en-AU" },
   // Female
-  { id: "female_neutral",name: "Aria",   gender: "female", accent: "American",   icon: "🎤", lang: "en-US" },
-  { id: "female_british",name: "Sophie", gender: "female", accent: "British",    icon: "🎤", lang: "en-GB" },
-  { id: "female_indian", name: "Priya",  gender: "female", accent: "Indian",     icon: "🎤", lang: "en-IN" },
-  { id: "female_au",     name: "Emma",   gender: "female", accent: "Australian", icon: "🎤", lang: "en-AU" },
+  { id: "female_neutral", name: "Aria", gender: "female", accent: "American", icon: "🎤", lang: "en-US" },
+  { id: "female_british", name: "Sophie", gender: "female", accent: "British", icon: "🎤", lang: "en-GB" },
+  { id: "female_indian", name: "Priya", gender: "female", accent: "Indian", icon: "🎤", lang: "en-IN" },
+  { id: "female_au", name: "Emma", gender: "female", accent: "Australian", icon: "🎤", lang: "en-AU" },
 ];
 
 function loadVoiceSettings() {
@@ -2284,25 +2301,25 @@ function saveVoiceSettings() {
 }
 
 function initVoiceSettingsPanel() {
-  const speedSlider  = document.getElementById("tts-speed");
-  const pitchSlider  = document.getElementById("tts-pitch");
+  const speedSlider = document.getElementById("tts-speed");
+  const pitchSlider = document.getElementById("tts-pitch");
   const volumeSlider = document.getElementById("tts-volume");
-  const speedVal     = document.getElementById("speed-val");
-  const pitchVal     = document.getElementById("pitch-val");
-  const volumeVal    = document.getElementById("volume-val");
-  const testBtn      = document.getElementById("test-voice-btn");
-  const malBtn       = document.getElementById("gender-male-btn");
-  const femBtn       = document.getElementById("gender-female-btn");
+  const speedVal = document.getElementById("speed-val");
+  const pitchVal = document.getElementById("pitch-val");
+  const volumeVal = document.getElementById("volume-val");
+  const testBtn = document.getElementById("test-voice-btn");
+  const malBtn = document.getElementById("gender-male-btn");
+  const femBtn = document.getElementById("gender-female-btn");
 
   if (!speedSlider) return;
 
   // Set initial values from saved settings
   const vs = AppState.voiceSettings;
-  speedSlider.value  = vs.speed;
-  pitchSlider.value  = vs.pitch;
+  speedSlider.value = vs.speed;
+  pitchSlider.value = vs.pitch;
   volumeSlider.value = vs.volume;
-  speedVal.textContent  = `${parseFloat(vs.speed).toFixed(1)}×`;
-  pitchVal.textContent  = parseFloat(vs.pitch).toFixed(1);
+  speedVal.textContent = `${parseFloat(vs.speed).toFixed(1)}×`;
+  pitchVal.textContent = parseFloat(vs.pitch).toFixed(1);
   volumeVal.textContent = `${Math.round(vs.volume * 100)}%`;
 
   // Sync gender buttons
@@ -2403,20 +2420,20 @@ function renderVoiceCards(gender) {
     card.addEventListener("click", () => {
       container.querySelectorAll(".voice-card").forEach(c => c.classList.remove("active"));
       card.classList.add("active");
-      const presetId  = card.dataset.presetId;
-      const voiceUri  = card.dataset.voiceUri;
-      const lang      = card.dataset.lang;
-      AppState.voiceSettings.selectedPreset  = presetId;
+      const presetId = card.dataset.presetId;
+      const voiceUri = card.dataset.voiceUri;
+      const lang = card.dataset.lang;
+      AppState.voiceSettings.selectedPreset = presetId;
       AppState.voiceSettings.selectedVoiceURI = voiceUri || null;
       AppState.voiceSettings.lang = lang;
       saveVoiceSettings();
-      showNotification(`Voice changed to ${VOICE_PRESETS.find(p=>p.id===presetId)?.name}`, "success");
+      showNotification(`Voice changed to ${VOICE_PRESETS.find(p => p.id === presetId)?.name}`, "success");
     });
   });
 }
 
 function initSettingsTabs() {
-  const tabs  = document.querySelectorAll(".settings-tab");
+  const tabs = document.querySelectorAll(".settings-tab");
   const panels = document.querySelectorAll(".settings-tab-panel");
 
   tabs.forEach(tab => {
@@ -2465,10 +2482,10 @@ function updateTTSStatusChip() {
 // ═══════════════════════════════════════════════════════════════
 
 function initSystemHealthPanel() {
-  const toggleBtn  = document.getElementById("health-toggle-btn");
-  const closeBtn   = document.getElementById("health-close-btn");
+  const toggleBtn = document.getElementById("health-toggle-btn");
+  const closeBtn = document.getElementById("health-close-btn");
   const refreshBtn = document.getElementById("health-refresh-btn");
-  const panel      = document.getElementById("health-panel");
+  const panel = document.getElementById("health-panel");
 
   toggleBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2497,8 +2514,8 @@ function initSystemHealthPanel() {
   // Close on outside click
   document.addEventListener("click", (e) => {
     if (panel.classList.contains("active") &&
-        !panel.contains(e.target) &&
-        !toggleBtn.contains(e.target)) {
+      !panel.contains(e.target) &&
+      !toggleBtn.contains(e.target)) {
       panel.classList.remove("active");
       stopHealthPolling();
     }
@@ -2519,11 +2536,11 @@ function stopHealthPolling() {
 
 async function fetchSystemHealth() {
   try {
-    const res  = await fetch(`${CONFIG.API_BASE_URL.replace("/api", "")}/api/system/health`);
+    const res = await fetch(`${CONFIG.API_BASE_URL.replace("/api", "")}/api/system/health`);
     const data = await res.json();
     renderSystemHealth(data);
     document.getElementById("health-last-updated").textContent =
-      "Updated " + new Date().toLocaleTimeString("en-US", {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+      "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   } catch (err) {
     document.getElementById("health-last-updated").textContent = "Backend offline";
     renderOfflineHealth();
@@ -2567,7 +2584,7 @@ function renderSystemHealth(data) {
   const worst = [data.cpu?.status, data.ram?.status, data.disk?.status]
     .reduce((acc, s) => {
       if (s === "critical" || acc === "critical") return "critical";
-      if (s === "warning"  || acc === "warning")  return "warning";
+      if (s === "warning" || acc === "warning") return "warning";
       return "good";
     }, "good");
   const dot = document.getElementById("health-dot");
@@ -2575,15 +2592,15 @@ function renderSystemHealth(data) {
 }
 
 function updateHealthCard(type, percent, status, valueText, subText) {
-  const card    = document.getElementById(`${type}-card`);
-  const valEl   = document.getElementById(`${type}-value`);
-  const barEl   = document.getElementById(`${type}-bar`);
-  const subEl   = document.getElementById(`${type}-sub`);
+  const card = document.getElementById(`${type}-card`);
+  const valEl = document.getElementById(`${type}-value`);
+  const barEl = document.getElementById(`${type}-bar`);
+  const subEl = document.getElementById(`${type}-sub`);
   if (!card) return;
 
   card.className = `health-stat-card ${status || ""}`;
-  if (valEl)  valEl.textContent  = valueText || "—";
-  if (subEl)  subEl.textContent  = subText   || "";
+  if (valEl) valEl.textContent = valueText || "—";
+  if (subEl) subEl.textContent = subText || "";
   if (barEl) {
     barEl.style.width = `${Math.min(percent || 0, 100)}%`;
     barEl.className = `health-bar-fill ${status === "good" ? "" : status || ""}`;
@@ -2599,17 +2616,17 @@ function renderOfflineHealth() {
 // 3. FOCUS / STUDY MODE  (Pomodoro Timer)
 // ═══════════════════════════════════════════════════════════════
 
-const POMO_FOCUS_SECS  = 25 * 60;
-const POMO_BREAK_SECS  = 5  * 60;
+const POMO_FOCUS_SECS = 25 * 60;
+const POMO_BREAK_SECS = 5 * 60;
 const RING_CIRCUMFERENCE = 2 * Math.PI * 88; // r=88 → ≈553px
 
 function initFocusMode() {
-  const focusBtn   = document.getElementById("focus-mode-btn");
-  const overlay    = document.getElementById("focus-overlay");
-  const closeBtn   = document.getElementById("focus-close-btn");
-  const startBtn   = document.getElementById("pomo-start-btn");
-  const resetBtn   = document.getElementById("pomo-reset-btn");
-  const skipBtn    = document.getElementById("pomo-skip-btn");
+  const focusBtn = document.getElementById("focus-mode-btn");
+  const overlay = document.getElementById("focus-overlay");
+  const closeBtn = document.getElementById("focus-close-btn");
+  const startBtn = document.getElementById("pomo-start-btn");
+  const resetBtn = document.getElementById("pomo-reset-btn");
+  const skipBtn = document.getElementById("pomo-skip-btn");
 
   focusBtn?.addEventListener("click", () => {
     overlay.classList.toggle("active");
@@ -2624,7 +2641,7 @@ function initFocusMode() {
 
   startBtn?.addEventListener("click", togglePomodoro);
   resetBtn?.addEventListener("click", resetPomodoro);
-  skipBtn?.addEventListener("click",  skipPhase);
+  skipBtn?.addEventListener("click", skipPhase);
 
   // Init ring gradient via SVG defs
   const svg = document.querySelector(".pomodoro-ring");
@@ -2682,7 +2699,7 @@ function tickPomodoro() {
 
 function switchPhase(phase) {
   const p = AppState.pomodoro;
-  p.phase    = phase;
+  p.phase = phase;
   p.timeLeft = phase === "focus" ? POMO_FOCUS_SECS : POMO_BREAK_SECS;
   p.totalFocus = p.timeLeft;
   updatePomodoroUI();
@@ -2692,8 +2709,8 @@ function switchPhase(phase) {
 function resetPomodoro() {
   const p = AppState.pomodoro;
   clearInterval(p._intervalId);
-  p.running  = false;
-  p.phase    = "focus";
+  p.running = false;
+  p.phase = "focus";
   p.timeLeft = POMO_FOCUS_SECS;
   p.totalFocus = POMO_FOCUS_SECS;
   document.getElementById("pomo-play-icon").className = "fas fa-play";
@@ -2712,17 +2729,17 @@ function updatePomodoroUI() {
   const p = AppState.pomodoro;
   const mins = Math.floor(p.timeLeft / 60);
   const secs = p.timeLeft % 60;
-  const timeStr = `${String(mins).padStart(2,"0")}:${String(secs).padStart(2,"0")}`;
+  const timeStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 
-  const timeEl  = document.getElementById("pomodoro-time");
+  const timeEl = document.getElementById("pomodoro-time");
   const phaseEl = document.getElementById("pomodoro-phase");
-  const ringEl  = document.getElementById("ring-progress");
+  const ringEl = document.getElementById("ring-progress");
 
-  if (timeEl)  timeEl.textContent  = timeStr;
+  if (timeEl) timeEl.textContent = timeStr;
   if (phaseEl) phaseEl.textContent = p.phase === "focus" ? "Focus" : "Break";
 
   if (ringEl) {
-    const progress   = p.timeLeft / p.totalFocus;
+    const progress = p.timeLeft / p.totalFocus;
     const dashOffset = RING_CIRCUMFERENCE * (1 - progress);
     ringEl.style.strokeDashoffset = dashOffset;
     ringEl.style.stroke = p.phase === "focus" ? "url(#ringGradient)" : "#10b981";
@@ -2778,7 +2795,7 @@ async function openWeeklySummary() {
   modal?.classList.add("active");
 
   try {
-    const res  = await fetch(`${CONFIG.API_BASE_URL.replace("/api", "")}/api/stats/weekly`);
+    const res = await fetch(`${CONFIG.API_BASE_URL.replace("/api", "")}/api/stats/weekly`);
     const data = await res.json();
     renderWeeklySummary(data);
   } catch (err) {
@@ -2796,15 +2813,15 @@ async function openWeeklySummary() {
 
 function renderWeeklySummary(data) {
   document.getElementById("ws-messages").textContent = data.messages_sent ?? "—";
-  document.getElementById("ws-code").textContent     = data.code_generated ?? "—";
-  document.getElementById("ws-files").textContent    = data.files_managed  ?? "—";
-  document.getElementById("ws-focus").textContent    = data.total_focus_minutes ?? AppState.pomodoro.totalFocusMinutes;
+  document.getElementById("ws-code").textContent = data.code_generated ?? "—";
+  document.getElementById("ws-files").textContent = data.files_managed ?? "—";
+  document.getElementById("ws-focus").textContent = data.total_focus_minutes ?? AppState.pomodoro.totalFocusMinutes;
 
   // Bar chart
-  const chart  = document.getElementById("weekly-chart");
-  const days   = data.daily_activity || [0,0,0,0,0,0,0];
+  const chart = document.getElementById("weekly-chart");
+  const days = data.daily_activity || [0, 0, 0, 0, 0, 0, 0];
   const maxVal = Math.max(...days, 1);
-  const today  = new Date().getDay(); // 0=Sun
+  const today = new Date().getDay(); // 0=Sun
   if (chart) {
     chart.innerHTML = days.map((v, i) => {
       const h = Math.round((v / maxVal) * 72) + 4;
@@ -2833,11 +2850,11 @@ function initProactiveSuggestions() {
   const hour = new Date().getHours();
   let greeting = "Ready to help.";
 
-  if (hour < 6)        greeting = "Working late? I've got you covered. 🌙";
-  else if (hour < 12)  greeting = "Good morning! Let's have a productive day. ☀️";
-  else if (hour < 17)  greeting = "Good afternoon! What are we tackling today? 💪";
-  else if (hour < 21)  greeting = "Good evening! Need help wrapping up? 🌆";
-  else                 greeting = "Good night! Studying late? I'll help. 📖";
+  if (hour < 6) greeting = "Working late? I've got you covered. 🌙";
+  else if (hour < 12) greeting = "Good morning! Let's have a productive day. ☀️";
+  else if (hour < 17) greeting = "Good afternoon! What are we tackling today? 💪";
+  else if (hour < 21) greeting = "Good evening! Need help wrapping up? 🌆";
+  else greeting = "Good night! Studying late? I'll help. 📖";
 
   msgEl.textContent = greeting;
 }
