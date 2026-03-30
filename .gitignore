@@ -8,5 +8,4 @@
 
 # Specifically for your structure
 prime/core/.env
-
 prime/test_db.py
