@@ -1,6 +1,6 @@
 PRIME AI - Personal AI Assistant : 
 
-Prime AI is an intelligent, voice-enabled personal AI assistant designed to improve productivity, learning, and system management for students and general users. It integrates automation, academic support, coding assistance, and system monitoring into a single unified platform.
+Prime AI is an intelligent, voice-enabled personal AI assistant designed to improve productivity, and learning for students and general users. It integrates automation, academic support, coding assistance, and system monitoring into a single unified platform.
 
 Overview :
 
@@ -10,38 +10,22 @@ The system is modular, scalable, and customizable through personality modes.
 
 Key Features :
 
-
  Core Features - 
  
-• Voice Interaction
-
-•	File Management
-
+•   Voice Interaction
 •	Coding Assistance
-
 •	Academic Study Support
-
-•	Web Browsing Assistance
-
 •	Scheduling & Productivity
 
-
- Smart Task Automation : • Repetitive task detection
-•	Automation suggestions
-•	Time-based execution
-•	Auto app launching
-
- Software Health Monitor : • Disk usage monitoring
+Software Health Monitor : • Disk usage monitoring
 •	RAM usage monitoring
 •	CPU usage tracking
-•	Outdated software detection
-•	Alerts & optimization suggestions
 
- Personality Modes : • Study Mode 
+ Personality Modes : 
+•   Study Mode 
 •	Chill Mode 
 •	Strict Mode 
 •	Funny Mode 
-
 
 How It Works : 
 Prime AI uses:
@@ -50,6 +34,7 @@ Prime AI uses:
 •	AI/NLP models for understanding user intent
 •	System-level scripting for file handling and automation
 •	Monitoring modules for system health analysis
+
 All components work together to provide a smooth, intelligent, and interactive experience.
 
  Target Users :
@@ -74,5 +59,3 @@ All components work together to provide a smooth, intelligent, and interactive e
  Conclusion :
 Prime AI is a smart, student-friendly, and productivity-focused personal assistant that combines automation, learning, and system intelligence into a single AI-powered solution.
 “Prime AI is built to think, assist, and automate — just like a real personal assistant.”
-
-
