@@ -2308,6 +2308,44 @@ body.sidebar-hidden .sidebar-toggle:hover i {
   gap: 16px;
 }
 
+/* ── Markdown rendering ───────────────────────────────────────── */
+.md-h1, .md-h2, .md-h3 {
+  font-family: 'Orbitron', sans-serif;
+  color: var(--accent-primary);
+  margin: 12px 0 6px;
+}
+.md-h1 { font-size: 1.2rem; }
+.md-h2 { font-size: 1.05rem; }
+.md-h3 { font-size: 0.95rem; letter-spacing: 0.03em; }
+
+.md-p  { margin: 4px 0; line-height: 1.6; }
+
+.md-ul, .md-ol {
+  margin: 6px 0 6px 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.md-ul li, .md-ol li { line-height: 1.6; }
+
+.md-hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 12px 0;
+  opacity: 0.4;
+}
+
+.md-spacer { height: 6px; }
+
+.md-inline-code {
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+  font-family: monospace;
+}
+
 /* ===================================
    RESPONSIVE
    ================================= */

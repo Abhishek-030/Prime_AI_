@@ -439,18 +439,144 @@ function renderSessionMessages(messages) {
       ? '<i class="fas fa-user"></i>'
       : '<i class="fas fa-brain"></i>';
 
+    const contentHtml = renderMessageContent(msg.content, msg.role);
+
     div.innerHTML = `
       <div class="message-avatar">${avatar}</div>
       <div class="message-content">
-        ${escapeHtml(msg.content)}
+        ${contentHtml}
         <div class="message-time">${time}</div>
       </div>`;
 
     chatMessages.appendChild(div);
   });
 
-  // Scroll to bottom
+  // Re-apply syntax highlighting to any code blocks
+  if (window.hljs) {
+    chatMessages.querySelectorAll("pre code").forEach(el => hljs.highlightElement(el));
+  }
+
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Detects if message content contains a code block (```...```)
+ * and renders it properly, otherwise escapes as plain text.
+ */
+function renderMessageContent(content, role) {
+  if (role === "user") {
+    return escapeHtml(content);
+  }
+
+  // Check for fenced code blocks
+  if (content.includes("```")) {
+    const parts = content.split(/(```[\w]*\n[\s\S]*?```)/g);
+    return parts.map(part => {
+      const fenceMatch = part.match(/^```([\w]*)\n([\s\S]*?)```$/);
+      if (fenceMatch) {
+        const lang = fenceMatch[1] || "plaintext";
+        const code = fenceMatch[2];
+        const escapedCode = escapeHtml(code);
+        return `
+          <div class="code-block-wrapper">
+            <div class="code-block-header">
+              <span class="code-lang-label">${lang.toUpperCase()}</span>
+              <button class="code-copy-btn" onclick="
+                navigator.clipboard.writeText(${JSON.stringify(code)}).then(() => {
+                  this.innerHTML = '<i class=\\'fas fa-check\\'></i> Copied!';
+                  setTimeout(() => this.innerHTML = '<i class=\\'fas fa-copy\\'></i> Copy', 2000);
+                })
+              ">
+                <i class="fas fa-copy"></i> Copy
+              </button>
+            </div>
+            <pre><code class="hljs language-${lang}">${escapedCode}</code></pre>
+          </div>`;
+      }
+      return parseMarkdown(part);
+    }).join("");
+  }
+
+  return parseMarkdown(content);
+}
+
+// ── Markdown parser for assistant messages ─────────────────────────────────────
+function parseMarkdown(text) {
+  if (!text) return "";
+
+  const lines = text.split("\n");
+  let html = "";
+  let inList = false;
+  let inOrderedList = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      if (inList)        { html += "</ul>"; inList = false; }
+      if (inOrderedList) { html += "</ol>"; inOrderedList = false; }
+      html += `<hr class="md-hr">`;
+      continue;
+    }
+
+    // Headings
+    const h3 = line.match(/^###\s+(.+)/);
+    const h2 = line.match(/^##\s+(.+)/);
+    const h1 = line.match(/^#\s+(.+)/);
+    if (h3 || h2 || h1) {
+      if (inList)        { html += "</ul>"; inList = false; }
+      if (inOrderedList) { html += "</ol>"; inOrderedList = false; }
+      const level = h1 ? 1 : h2 ? 2 : 3;
+      const content = inlineMarkdown((h1 || h2 || h3)[1]);
+      html += `<h${level} class="md-h${level}">${content}</h${level}>`;
+      continue;
+    }
+
+    // Ordered list
+    const olMatch = line.match(/^(\d+)\.\s+(.+)/);
+    if (olMatch) {
+      if (inList) { html += "</ul>"; inList = false; }
+      if (!inOrderedList) { html += "<ol class='md-ol'>"; inOrderedList = true; }
+      html += `<li>${inlineMarkdown(olMatch[2])}</li>`;
+      continue;
+    }
+
+    // Unordered list
+    const ulMatch = line.match(/^[-*]\s+(.+)/);
+    if (ulMatch) {
+      if (inOrderedList) { html += "</ol>"; inOrderedList = false; }
+      if (!inList) { html += "<ul class='md-ul'>"; inList = true; }
+      html += `<li>${inlineMarkdown(ulMatch[1])}</li>`;
+      continue;
+    }
+
+    // Close open lists
+    if (inList)        { html += "</ul>"; inList = false; }
+    if (inOrderedList) { html += "</ol>"; inOrderedList = false; }
+
+    // Empty line → paragraph break
+    if (line.trim() === "") {
+      html += `<div class="md-spacer"></div>`;
+      continue;
+    }
+
+    // Normal paragraph
+    html += `<p class="md-p">${inlineMarkdown(line)}</p>`;
+  }
+
+  if (inList)        html += "</ul>";
+  if (inOrderedList) html += "</ol>";
+
+  return html;
+}
+
+// Handles **bold**, *italic*, `inline code` within a line
+function inlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g,     "<em>$1</em>")
+    .replace(/`(.+?)`/g,       "<code class='md-inline-code'>$1</code>");
 }
 
 /**
@@ -820,14 +946,218 @@ function initChat() {
   attachSuggestionListeners();
 }
 
+async function handleWeeklySummaryChat() {
+  const welcomeScreen = document.querySelector(".welcome-screen");
+  if (welcomeScreen) welcomeScreen.remove();
+
+  addMessage("Summarize my week and give productivity tips", "user");
+
+  // Show typing indicator
+  const chatMessages = document.getElementById("chat-messages");
+  const typingEl = createTypingIndicator();
+  chatMessages.appendChild(typingEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  let llmMessage;
+
+  if (AppState.isAuthenticated) {
+    try {
+      const res  = await apiFetch("/stats/weekly/summary-prompt");
+      const data = await res.json();
+      llmMessage = data.prompt;
+    } catch (e) {
+      llmMessage = "Summarize my week of AI usage and give me 3 productivity tips.";
+    }
+  } else {
+    llmMessage = "Summarize my week of AI usage and give me 3 productivity tips.";
+  }
+
+  typingEl.remove();
+
+  // Now stream it as a normal chat message using the enriched prompt
+  await streamChatMessage(llmMessage, false);
+}
+
 function attachSuggestionListeners() {
   document.querySelectorAll(".suggestion-card").forEach((card) => {
-    card.addEventListener("click", function () {
+    card.addEventListener("click", async function () {   // ← async added
       const prompt = this.getAttribute("data-prompt");
+
+      if (prompt === "Explain this code and help me debug it") {
+        handleDebugCard();
+        return;
+      }
+      if (prompt === "Check my system health and suggest optimizations") {
+        await handleSystemHealthCard();   // ← also benefits from await
+        return;
+      }
+      if (prompt === "Create a study schedule for the next week") {
+        handleStudyPlanCard();
+        return;
+      }
+      if (prompt === "Start a 25-minute Pomodoro focus session for studying") {
+        handleFocusSessionCard();
+        return;
+      }
+      if (prompt === "Summarize my week and give productivity tips") {
+        await handleWeeklySummaryChat();
+        return;
+      }
+
+      // Default: send prompt as message
       document.getElementById("chat-input").value = prompt;
       sendMessage();
     });
   });
+}
+
+// ── Suggestion Card Handlers ──────────────────────────────────────────────────
+
+function handleDebugCard() {
+  const welcomeScreen = document.querySelector(".welcome-screen");
+  if (welcomeScreen) welcomeScreen.remove();
+
+  const chatMessages = document.getElementById("chat-messages");
+  const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "message assistant";
+  msgDiv.innerHTML = `
+    <div class="message-avatar"><i class="fas fa-brain"></i></div>
+    <div class="message-content">
+      Sure! Please share the code you'd like me to debug. You can paste it directly in the chat — include any error messages you're seeing too, that'll help me pinpoint the issue faster. 🛠️
+      <div class="message-time">${time}</div>
+    </div>`;
+  chatMessages.appendChild(msgDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  AppState._debugPrimed = true;   // ← flag so next message gets debug context
+  document.getElementById("chat-input").focus();
+}
+
+async function handleSystemHealthCard() {
+  const welcomeScreen = document.querySelector(".welcome-screen");
+  if (welcomeScreen) welcomeScreen.remove();
+
+  addMessage("Check my system health and suggest optimizations", "user");
+
+  // Show typing indicator
+  const chatMessages = document.getElementById("chat-messages");
+  const typingEl = createTypingIndicator();
+  chatMessages.appendChild(typingEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  try {
+    const res = await fetch(`${CONFIG.API_BASE_URL}/system/health`);
+    const data = await res.json();
+    typingEl.remove();
+
+    const cpu = data.cpu?.percent ?? 0;
+    const ram = data.ram?.percent ?? 0;
+    const disk = data.disk?.percent ?? 0;
+
+    // Build suggestions based on real data
+    const suggestions = [];
+    if (cpu > 85) suggestions.push("🔴 CPU is critically high — consider closing background apps or restarting.");
+    else if (cpu > 60) suggestions.push("🟡 CPU usage is elevated. Check for heavy processes.");
+    else suggestions.push("🟢 CPU looks healthy.");
+
+    if (ram > 85) suggestions.push("🔴 RAM is nearly full — close unused tabs and apps.");
+    else if (ram > 60) suggestions.push("🟡 RAM usage is moderate. Keep an eye on it.");
+    else suggestions.push("🟢 RAM is in good shape.");
+
+    if (disk > 85) suggestions.push("🔴 Disk is almost full — free up space soon.");
+    else if (disk > 60) suggestions.push("🟡 Disk usage is getting high. Consider cleaning up files.");
+    else suggestions.push("🟢 Disk space is fine.");
+
+    const report = `Here's your system health snapshot:\n\n` +
+      `• **CPU:** ${cpu.toFixed(0)}% (${data.cpu?.count} cores @ ${data.cpu?.freq_mhz ?? "—"} MHz)\n` +
+      `• **RAM:** ${ram.toFixed(0)}% used — ${data.ram?.used_gb} / ${data.ram?.total_gb} GB\n` +
+      `• **Disk:** ${disk.toFixed(0)}% used — ${data.disk?.used_gb} / ${data.disk?.total_gb} GB\n\n` +
+      `**Suggestions:**\n${suggestions.join("\n")}`;
+
+    const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "message assistant";
+    msgDiv.innerHTML = `
+      <div class="message-avatar"><i class="fas fa-brain"></i></div>
+      <div class="message-content">
+        ${report.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")}
+        <div class="message-time">${time}</div>
+      </div>`;
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    if (AppState.settings.ttsEnabled) speakText(`CPU is at ${cpu.toFixed(0)}%, RAM at ${ram.toFixed(0)}%, Disk at ${disk.toFixed(0)}%.`);
+
+  } catch (err) {
+    typingEl.remove();
+    const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    const chatMessages = document.getElementById("chat-messages");
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "message assistant";
+    msgDiv.innerHTML = `
+      <div class="message-avatar"><i class="fas fa-brain"></i></div>
+      <div class="message-content">
+        Couldn't reach the backend to fetch system stats. Make sure app.py is running on port 5000. 🔌
+        <div class="message-time">${time}</div>
+      </div>`;
+    chatMessages.appendChild(msgDiv);
+  }
+}
+
+async function handleStudyPlanCard() {
+  const welcomeScreen = document.querySelector(".welcome-screen");
+  if (welcomeScreen) welcomeScreen.remove();
+
+  const chatMessages = document.getElementById("chat-messages");
+  const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+
+  // Show the assistant prompt message
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "message assistant";
+  msgDiv.innerHTML = `
+    <div class="message-avatar"><i class="fas fa-brain"></i></div>
+    <div class="message-content">
+      I'd love to build a study plan for you! 📚 Please share your syllabus or topic list — even a rough one works. You can also mention your exam date and how many hours a day you can study, and I'll tailor the schedule to fit you perfectly.
+      <div class="message-time">${time}</div>
+    </div>`;
+  chatMessages.appendChild(msgDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  // ── Seed the chat input with a context primer so the NEXT message
+  //    the user sends carries the study-plan intent to the LLM.
+  //    We do this by pre-filling a hidden context prefix that gets
+  //    prepended when sendMessage fires.
+  AppState._studyPlanPrimed = true;
+
+  document.getElementById("chat-input").focus();
+}
+
+function handleFocusSessionCard() {
+  const welcomeScreen = document.querySelector(".welcome-screen");
+  if (welcomeScreen) welcomeScreen.remove();
+
+  // Toggle the focus overlay (same as clicking the focus button)
+  const focusOverlay = document.getElementById("focus-overlay");
+  const focusBtn = document.getElementById("focus-mode-btn");
+
+  focusOverlay?.classList.add("active");
+  focusBtn?.classList.add("active");
+  updatePomodoroUI();
+
+  // Also show a chat message confirming the action
+  const chatMessages = document.getElementById("chat-messages");
+  const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "message assistant";
+  msgDiv.innerHTML = `
+    <div class="message-avatar"><i class="fas fa-brain"></i></div>
+    <div class="message-content">
+      Focus mode is open! 🎯 I've set up a 25-minute Pomodoro session for you. Hit the play button to start — I'll stay quiet until you're done. You've got this!
+      <div class="message-time">${time}</div>
+    </div>`;
+  chatMessages.appendChild(msgDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 // Keywords that trigger the code-generation model (qwen2.5-coder:7b)
@@ -845,9 +1175,35 @@ const COMMAND_KEYWORDS = [
   "system info", "cpu", "ram", "disk", "memory", "battery",
 ];
 
+const CODE_GENERATION_VERBS = [
+  "write", "generate", "create", "implement", "code", "program",
+  "build a function", "build a class", "build a script",
+  "make a function", "make a class", "make a script",
+  "give me code", "show me code", "show me a script",
+  "write me", "give me a", "build me",
+];
+
+const CODE_LANGUAGE_NOUNS = [
+  "function", "class", "script", "algorithm", "snippet", "method",
+  "program", "api", "endpoint", "regex", "query",
+  "python", "javascript", "typescript", "java", "c++", "cpp", "c#",
+  "csharp", "html", "css", "sql", "bash", "shell", "go", "rust",
+  "react", "component", "hook",
+  "bubble sort", "merge sort", "quick sort", "binary search",
+  "linked list", "binary tree", "graph", "recursion",
+];
+
 function isCodeRequest(message) {
   const lower = message.toLowerCase();
-  return CODE_KEYWORDS.some((kw) => lower.includes(kw));
+
+  // Must contain a generation verb AND a code-specific noun
+  const hasVerb = CODE_GENERATION_VERBS.some(v => lower.includes(v));
+  const hasNoun = CODE_LANGUAGE_NOUNS.some(n => lower.includes(n));
+
+  // Also catch explicit "write X in Y" patterns like "write bubble sort in python"
+  const explicitPattern = /\b(write|generate|implement|create|code)\b.{0,40}\b(in\s+)?(python|javascript|java|c\+\+|cpp|typescript|sql|bash|html|css|rust|go)\b/i;
+
+  return (hasVerb && hasNoun) || explicitPattern.test(lower);
 }
 
 function isCommandRequest(message) {
@@ -857,25 +1213,38 @@ function isCommandRequest(message) {
 
 async function sendMessage() {
   const chatInput = document.getElementById("chat-input");
-  const message = chatInput.value.trim();
-  if (!message) return;
+  const rawMessage = chatInput.value.trim();   // what user typed (shown in UI)
+  if (!rawMessage) return;
+
+  // ── Build the actual prompt sent to LLM (may differ from display text)
+  let llmMessage = rawMessage;
+
+  if (AppState._studyPlanPrimed) {
+    llmMessage = `I want to create a study plan. Here is my syllabus/topics: ${rawMessage}. Please create a detailed day-by-day or week-by-week study schedule for me. Do not generate code — give me a structured text schedule.`;
+    AppState._studyPlanPrimed = false;
+  }
+
+  if (AppState._debugPrimed) {
+    llmMessage = `Please debug the following code, explain what is wrong, and provide the corrected version:\n\n${rawMessage}`;
+    AppState._debugPrimed = false;
+  }
 
   chatInput.value = "";
   chatInput.style.height = "auto";
   document.getElementById("send-btn").disabled = true;
 
-  // Hide welcome screen if showing
   const welcomeScreen = document.querySelector(".welcome-screen");
   if (welcomeScreen) welcomeScreen.remove();
 
-  addMessage(message, "user");
+  // Show raw message in UI, send augmented message to LLM
+  addMessage(rawMessage, "user");
 
-  if (isCodeRequest(message)) {
-    await streamCodeMessage(message);
-  } else if (isCommandRequest(message)) {
-    await streamChatMessage(message, true);
+  if (isCodeRequest(llmMessage)) {
+    await streamCodeMessage(llmMessage);
+  } else if (isCommandRequest(llmMessage)) {
+    await streamChatMessage(llmMessage, true);
   } else {
-    await streamChatMessage(message, false);
+    await streamChatMessage(llmMessage, false);
   }
 }
 
@@ -909,8 +1278,8 @@ async function streamChatMessage(message, useCommandRoute = false) {
       <div class="message-time">${time}</div>
     </div>`;
 
-  const textEl    = msgDiv.querySelector(".chat-streaming-text");
-  let fullText    = "";
+  const textEl = msgDiv.querySelector(".chat-streaming-text");
+  let fullText = "";
   let bubbleShown = false;
 
   try {
@@ -918,7 +1287,7 @@ async function streamChatMessage(message, useCommandRoute = false) {
       method: "POST",
       body: JSON.stringify({
         message,
-        session_id:  AppState.currentSessionId,
+        session_id: AppState.currentSessionId,
         personality: AppState.selectedPersonality || "normal",
       }),
     });
@@ -934,9 +1303,9 @@ async function streamChatMessage(message, useCommandRoute = false) {
     }
 
     // ── Stream tokens ──────────────────────────────────────────────────────
-    const reader  = res.body.getReader();
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer    = "";
+    let buffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -958,8 +1327,8 @@ async function streamChatMessage(message, useCommandRoute = false) {
         }
 
         const token = payload.replace(/\\n/g, "\n");
-        fullText   += token;
-        textEl.textContent = fullText;
+        fullText += token;
+        textEl.innerHTML = parseMarkdown(fullText);
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
     }
@@ -977,8 +1346,8 @@ async function streamChatMessage(message, useCommandRoute = false) {
         AppState.loadedMessages[AppState.currentSessionId] = [];
       }
       AppState.loadedMessages[AppState.currentSessionId].push(
-        { role: "user",      content: message,  created_at: new Date().toISOString() },
-        { role: "assistant", content: fullText,  created_at: new Date().toISOString() },
+        { role: "user", content: message, created_at: new Date().toISOString() },
+        { role: "assistant", content: fullText, created_at: new Date().toISOString() },
       );
     }
 
@@ -1009,12 +1378,10 @@ async function streamChatMessage(message, useCommandRoute = false) {
 async function streamCodeMessage(message) {
   const chatMessages = document.getElementById("chat-messages");
 
-  // Build the message bubble immediately
   const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   const msgDiv = document.createElement("div");
   msgDiv.className = "message assistant";
 
-  // Detect language hint from the user message for Highlight.js
   const langHint = detectLanguage(message);
 
   msgDiv.innerHTML = `
@@ -1040,7 +1407,6 @@ async function streamCodeMessage(message) {
   const copyBtn = msgDiv.querySelector(".code-copy-btn");
   let fullCode = "";
 
-  // Copy button handler
   copyBtn.addEventListener("click", () => {
     navigator.clipboard.writeText(fullCode).then(() => {
       copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
@@ -1048,15 +1414,23 @@ async function streamCodeMessage(message) {
     });
   });
 
-  // Fetch the SSE stream
   try {
-    const response = await fetch(`${CONFIG.API_BASE_URL}/code`, {
+    // ── Send session_id so backend saves the message ──────────────────────────
+    const response = await apiFetch("/code", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        session_id: AppState.currentSessionId,   // ← NEW
+      }),
     });
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    // ── Read back the session id (new session created on first code msg) ──────
+    const returnedSessionId = response.headers.get("X-Session-Id");
+    if (returnedSessionId) {
+      AppState.currentSessionId = returnedSessionId;
+    }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -1068,29 +1442,43 @@ async function streamCodeMessage(message) {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // keep incomplete line
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
-        const payload = line.slice(6); // strip "data: "
+        const payload = line.slice(6);
         if (payload === "[DONE]") break;
 
-        // Unescape the \n we escaped server-side
         const token = payload.replace(/\\n/g, "\n");
         fullCode += token;
-
-        // Render raw text while streaming (escaping HTML)
         codeEl.textContent = fullCode;
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
     }
 
-    // Apply Highlight.js once streaming is complete
+    // Apply syntax highlighting once streaming is done
     if (window.hljs) {
       hljs.highlightElement(codeEl);
     }
 
+    // Cache locally so the message appears immediately if user navigates away
+    // and back without a page refresh
+    if (AppState.currentSessionId) {
+      if (!AppState.loadedMessages[AppState.currentSessionId]) {
+        AppState.loadedMessages[AppState.currentSessionId] = [];
+      }
+      AppState.loadedMessages[AppState.currentSessionId].push(
+        { role: "user", content: message, created_at: new Date().toISOString() },
+        { role: "assistant", content: "```\n" + fullCode + "\n```", created_at: new Date().toISOString() },
+      );
+    }
+
     AppState.chatHistory.push({ sender: "assistant", text: fullCode, time });
+
+    // Refresh sidebar so the session appears (or title updates)
+    if (AppState.isAuthenticated) {
+      setTimeout(() => loadSidebarSessions(), 2500);
+    }
 
   } catch (error) {
     console.error("Code stream error:", error);
@@ -2795,11 +3183,12 @@ async function openWeeklySummary() {
   modal?.classList.add("active");
 
   try {
-    const res = await fetch(`${CONFIG.API_BASE_URL.replace("/api", "")}/api/stats/weekly`);
+    // Use apiFetch so the Authorization header is included
+    const res = await apiFetch("/stats/weekly");
     const data = await res.json();
     renderWeeklySummary(data);
   } catch (err) {
-    // Use local data when backend isn't running
+    // Graceful fallback using local session data
     renderWeeklySummary({
       messages_sent: AppState.chatHistory.filter(m => m.sender === "user").length,
       code_generated: AppState.chatHistory.filter(m => m.text?.includes("```")).length,
