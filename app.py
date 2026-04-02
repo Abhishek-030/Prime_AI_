@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 from flask import Flask, request, jsonify, Response, stream_with_context, make_response, g
-from core.auth import register_user, login_user, get_user_by_id, decode_jwt
+from core.auth import register_user, login_user, get_user_by_id, decode_jwt, supabase
 from core.auth.decorators import require_auth
 from flask_cors import CORS
 from core.engine import Engine
@@ -31,9 +31,36 @@ CORS(app,
          "http://127.0.0.1:5500",
      ]
 )
-# CORS(app, supports_credentials=True, origins=["http://localhost:5500","http://127.0.0.1:5500", "http://localhost:3000", "null"]) # Allows requests from your frontend (localhost HTML file)
 
 engine = Engine()
+
+
+# ─── Helper: increment weekly_stats column ─────────────────────────────────────
+
+def _increment_weekly_stat(user_id: str, column: str, amount: int = 1) -> None:
+    from datetime import date, timedelta
+    today      = date.today()
+    week_start = (today - timedelta(days=today.weekday())).isoformat()
+    try:
+        existing = supabase.table('weekly_stats') \
+            .select('id, ' + column) \
+            .eq('user_id',    user_id) \
+            .eq('week_start', week_start) \
+            .execute()
+        if existing.data:
+            row = existing.data[0]
+            supabase.table('weekly_stats') \
+                .update({column: (row.get(column) or 0) + amount}) \
+                .eq('id', row['id']) \
+                .execute()
+        else:
+            supabase.table('weekly_stats').insert({
+                'user_id':    user_id,
+                'week_start': week_start,
+                column:       amount,
+            }).execute()
+    except Exception as e:
+        print(f'[WeeklyStat Error] {e}')
 
 
 # ─── Routes ────────────────────────────────────────────────────────────────────
@@ -43,16 +70,6 @@ engine = Engine()
 def chat():
     """
     Session-aware streaming chat endpoint.
-
-    Request body:
-        {
-            "message":     "...",
-            "session_id":  "uuid or null",   ← null = create new session
-            "personality": "normal"           ← optional
-        }
-
-    Response headers include X-Session-Id so the frontend
-    can store the session_id after a new chat is created.
     """
     data = request.get_json()
     if not data or "message" not in data:
@@ -62,7 +79,7 @@ def chat():
     if not user_message:
         return jsonify({"error": "Empty message."}), 400
 
-    session_id  = data.get("session_id")        # None for brand new chats
+    session_id  = data.get("session_id")
     personality = data.get("personality", "normal")
     user_id     = g.user_id
 
@@ -70,12 +87,10 @@ def chat():
     is_new_session = False
 
     if session_id:
-        # Verify this session belongs to the authenticated user
         session = get_session(session_id, user_id)
         if not session:
             return jsonify({"error": "Session not found."}), 404
     else:
-        # Create a new session — title will be set after first reply
         session      = create_session(user_id)
         session_id   = session["id"]
         is_new_session = True
@@ -96,9 +111,6 @@ def chat():
         full_response = []
 
         try:
-            # Directly call the Ollama streaming client with our built prompt
-            # We bypass stream_reply's internal prefix since build_prompt
-            # already includes the full system + history context
             import requests as req
             import json
 
@@ -139,12 +151,11 @@ def chat():
         finally:
             yield "data: [DONE]\n\n"
 
-            # ── 5. Post-stream: save reply + background tasks ─────────────────
             assistant_reply = "".join(full_response).strip()
             if assistant_reply:
                 save_message(session_id, "assistant", assistant_reply)
+                _increment_weekly_stat(user_id, "messages_sent")
 
-                # Generate title from first message (runs in background)
                 if is_new_session:
                     threading.Thread(
                         target=_generate_and_save_title,
@@ -152,7 +163,6 @@ def chat():
                         daemon=True,
                     ).start()
 
-                # Trigger summarization if session is getting long
                 msg_count = get_message_count(session_id)
                 if msg_count > 20 and msg_count % 20 == 0:
                     threading.Thread(
@@ -167,18 +177,12 @@ def chat():
     )
     response.headers["Cache-Control"]     = "no-cache"
     response.headers["X-Accel-Buffering"] = "no"
-    response.headers["X-Session-Id"]      = session_id   # ← frontend reads this
+    response.headers["X-Session-Id"]      = session_id
     return response
 
 def _generate_and_save_title(session_id: str, first_message: str) -> None:
-    """
-    Background thread: asks LLM for a short title, saves to Supabase.
-    Fires once after the very first message in a new session.
-    """
     try:
         prompt = build_title_prompt(first_message)
-        result = engine.intent_detector.llm.generate(prompt)
-        # generate() returns a dict — we want raw text here so call Ollama directly
         import requests as req, json
         resp = req.post(
             "http://localhost:11434/api/generate",
@@ -186,7 +190,6 @@ def _generate_and_save_title(session_id: str, first_message: str) -> None:
             timeout=30,
         )
         raw = resp.json().get("response", "").strip()
-        # Clean up any stray quotes or newlines the model might add
         title = raw.split("\n")[0].strip('"\'').strip()[:80]
         if title:
             update_session_title(session_id, title)
@@ -196,17 +199,11 @@ def _generate_and_save_title(session_id: str, first_message: str) -> None:
 
 
 def _summarize_old_messages(session_id: str) -> None:
-    """
-    Background thread: compresses older messages into a 4-5 sentence summary.
-    Fires every 20 messages beyond the first 15 (which stay verbatim).
-    """
     try:
         old_messages = get_messages_for_summary(session_id, skip_last=15)
         if not old_messages:
             return
-
         prompt = build_summary_prompt(old_messages)
-
         import requests as req, json
         resp = req.post(
             "http://localhost:11434/api/generate",
@@ -220,39 +217,103 @@ def _summarize_old_messages(session_id: str) -> None:
     except Exception as e:
         print(f"[Summary Error] {e}")
 
-# ─── GET /api/sessions  —  populate sidebar on page load ──────────────────────
+# ─── GET /api/sessions ─────────────────────────────────────────────────────────
+
+@app.route('/api/stats/weekly/summary-prompt', methods=['GET'])
+@require_auth
+def weekly_summary_prompt():
+    """
+    Returns a pre-built prompt string with real stats injected,
+    ready to be sent to the LLM for a weekly summary chat response.
+    """
+    from datetime import date, timedelta
+    user_id = g.user_id
+
+    today      = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end   = week_start + timedelta(days=7)
+
+    sessions_res = supabase.table('chat_sessions') \
+        .select('id, title, created_at') \
+        .eq('user_id', user_id) \
+        .execute()
+    session_ids = [s['id'] for s in (sessions_res.data or [])]
+
+    messages_sent  = 0
+    code_generated = 0
+    daily_activity = [0] * 7
+
+    if session_ids:
+        msgs_res = supabase.table('messages') \
+            .select('role, content, created_at') \
+            .in_('session_id', session_ids) \
+            .gte('created_at', week_start.isoformat()) \
+            .lt('created_at',  week_end.isoformat()) \
+            .execute()
+
+        for msg in (msgs_res.data or []):
+            if msg['role'] == 'user':
+                messages_sent += 1
+                d = date.fromisoformat(msg['created_at'][:10])
+                daily_activity[d.weekday()] += 1
+            elif msg['role'] == 'assistant' and '```' in (msg.get('content') or ''):
+                code_generated += 1
+
+    stat_res = supabase.table('weekly_stats') \
+        .select('*') \
+        .eq('user_id',    user_id) \
+        .eq('week_start', week_start.isoformat()) \
+        .execute()
+    stat_row = stat_res.data[0] if stat_res.data else {}
+
+    week_sessions = [
+        s for s in (sessions_res.data or [])
+        if s.get('created_at', '')[:10] >= week_start.isoformat()
+    ]
+    topics = list({
+        s['title'] for s in week_sessions
+        if s.get('title') and s['title'] != 'New Chat'
+    })[:6]
+
+    focus_mins = stat_row.get('total_focus_minutes', 0)
+
+    context = (
+        f"Here is the user's actual Prime AI usage data for this week "
+        f"(Mon {week_start} to today {today}):\n"
+        f"- Messages sent: {messages_sent}\n"
+        f"- Code generations: {code_generated}\n"
+        f"- Focus minutes logged: {focus_mins}\n"
+        f"- Topics discussed: {', '.join(topics) if topics else 'various topics'}\n"
+        f"- Daily activity (Mon-Sun message counts): {daily_activity}\n\n"
+        f"Based ONLY on this real data, write a friendly weekly summary for the user "
+        f"and give 3 specific productivity tips tailored to their usage patterns. "
+        f"Be encouraging and specific. Do not make up data."
+    )
+
+    return jsonify({'prompt': context})
+
 @app.route("/api/sessions", methods=["GET"])
 @require_auth
 def list_sessions():
-    """Returns all sessions for the logged-in user, newest first."""
     sessions = get_user_sessions(g.user_id)
     return jsonify({"sessions": sessions}), 200
 
 
-# ─── GET /api/sessions/<id>/messages  —  load a past chat ─────────────────────
+# ─── GET /api/sessions/<id>/messages ──────────────────────────────────────────
 @app.route("/api/sessions/<session_id>/messages", methods=["GET"])
 @require_auth
 def get_session_messages(session_id):
-    """
-    Returns the full message history for a session.
-    Called when user clicks a past chat in the sidebar.
-    """
     session = get_session(session_id, g.user_id)
     if not session:
         return jsonify({"error": "Session not found."}), 404
-
     messages = get_all_messages(session_id)
-    return jsonify({
-        "session":  session,
-        "messages": messages,
-    }), 200
+    return jsonify({"session": session, "messages": messages}), 200
 
 
-# ─── DELETE /api/sessions/<id>  —  delete from sidebar ───────────────────────
+# ─── DELETE /api/sessions/<id> ────────────────────────────────────────────────
 @app.route("/api/sessions/<session_id>", methods=["DELETE"])
 @require_auth
 def remove_session(session_id):
-    """Deletes a session and all its messages (cascade)."""
     deleted = delete_session(session_id, g.user_id)
     if not deleted:
         return jsonify({"error": "Session not found."}), 404
@@ -261,14 +322,9 @@ def remove_session(session_id):
 
 @app.route('/api/reply', methods=['POST'])
 def reply():
-    """
-    Direct streaming reply — NO intent detection.
-    Used for pure conversation (hello, questions, etc.) for minimum latency.
-    """
     data = request.get_json()
     if not data or 'message' not in data:
         return jsonify({'error': 'No message provided'}), 400
-
     user_message = data['message'].strip()
     if not user_message:
         return jsonify({'error': 'Empty message'}), 400
@@ -284,33 +340,50 @@ def reply():
         finally:
             yield "data: [DONE]\n\n"
 
-    response = Response(
-        stream_with_context(generate_sse()),
-        mimetype='text/event-stream'
-    )
+    response = Response(stream_with_context(generate_sse()), mimetype='text/event-stream')
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
     return response
 
 
+# ─── /api/code  ── SESSION-AWARE (FIXED) ──────────────────────────────────────
 @app.route('/api/code', methods=['POST'])
+@require_auth
 def code_generate():
     """
-    Code generation endpoint — streams tokens via Server-Sent Events (SSE).
+    Code generation endpoint — now session-aware.
+    Saves user prompt + generated code to Supabase so history persists.
     """
     data = request.get_json()
-
     if not data or 'message' not in data:
         return jsonify({'error': 'No message provided'}), 400
 
     user_message = data['message'].strip()
-
     if not user_message:
         return jsonify({'error': 'Empty message'}), 400
 
+    session_id = data.get('session_id')
+    user_id    = g.user_id
+    is_new_session = False
+
+    # ── Resolve session ───────────────────────────────────────────────────────
+    if session_id:
+        session = get_session(session_id, user_id)
+        if not session:
+            return jsonify({'error': 'Session not found.'}), 404
+    else:
+        session        = create_session(user_id)
+        session_id     = session['id']
+        is_new_session = True
+
+    # Save user message
+    save_message(session_id, 'user', user_message)
+
     def generate_sse():
+        full_code = []
         try:
             for chunk in engine.generate_code(user_message):
+                full_code.append(chunk)
                 escaped = chunk.replace('\n', '\\n')
                 yield f"data: {escaped}\n\n"
         except Exception as e:
@@ -319,49 +392,50 @@ def code_generate():
         finally:
             yield "data: [DONE]\n\n"
 
-    response = Response(
-        stream_with_context(generate_sse()),
-        mimetype='text/event-stream'
-    )
-    response.headers['Cache-Control'] = 'no-cache'
+            assistant_code = ''.join(full_code).strip()
+            if assistant_code:
+                # Store with fences so renderMessageContent() renders a code block
+                save_message(session_id, 'assistant', f'```\n{assistant_code}\n```')
+                _increment_weekly_stat(user_id, 'code_generated')
+
+                if is_new_session:
+                    threading.Thread(
+                        target=_generate_and_save_title,
+                        args=(session_id, user_message),
+                        daemon=True,
+                    ).start()
+
+    response = Response(stream_with_context(generate_sse()), mimetype='text/event-stream')
+    response.headers['Cache-Control']     = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['X-Session-Id']      = session_id  # ← frontend stores this
     return response
 
 
-# ─── NEW: System Health Monitor ────────────────────────────────────────────────
-
+# ─── System Health Monitor ────────────────────────────────────────────────────
 @app.route('/api/system/health', methods=['GET'])
 def system_health():
-    """
-    Returns real-time system stats using psutil.
-    Install dependency: pip install psutil
-    Returns: CPU%, RAM%, Disk%, per-core CPU, top processes
-    """
     try:
         import psutil
 
-        # CPU
-        cpu_percent     = psutil.cpu_percent(interval=0.3)
-        cpu_per_core    = psutil.cpu_percent(interval=0, percpu=True)
-        cpu_freq        = psutil.cpu_freq()
-        cpu_count       = psutil.cpu_count(logical=True)
+        cpu_percent  = psutil.cpu_percent(interval=0.3)
+        cpu_per_core = psutil.cpu_percent(interval=0, percpu=True)
+        cpu_freq     = psutil.cpu_freq()
+        cpu_count    = psutil.cpu_count(logical=True)
 
-        # RAM
         ram = psutil.virtual_memory()
         ram_used_gb  = round(ram.used  / (1024 ** 3), 2)
         ram_total_gb = round(ram.total / (1024 ** 3), 2)
 
-        # Disk (primary drive)
-        disk = psutil.disk_usage('/')
+        disk_path = "C:\\" if __import__('platform').system() == "Windows" else "/"
+        disk = psutil.disk_usage(disk_path)
         disk_used_gb  = round(disk.used  / (1024 ** 3), 1)
         disk_total_gb = round(disk.total / (1024 ** 3), 1)
 
-        # Network
         net = psutil.net_io_counters()
         net_sent_mb = round(net.bytes_sent / (1024 ** 2), 1)
         net_recv_mb = round(net.bytes_recv / (1024 ** 2), 1)
 
-        # Top 5 CPU-consuming processes
         processes = []
         for proc in sorted(
             psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']),
@@ -370,15 +444,14 @@ def system_health():
         )[:5]:
             try:
                 processes.append({
-                    'pid':     proc.info['pid'],
-                    'name':    proc.info['name'],
-                    'cpu':     round(proc.info['cpu_percent'] or 0, 1),
-                    'memory':  round(proc.info['memory_percent'] or 0, 1),
+                    'pid':    proc.info['pid'],
+                    'name':   proc.info['name'],
+                    'cpu':    round(proc.info['cpu_percent'] or 0, 1),
+                    'memory': round(proc.info['memory_percent'] or 0, 1),
                 })
             except Exception:
                 pass
 
-        # Battery (if available)
         battery_info = None
         try:
             battery = psutil.sensors_battery()
@@ -391,129 +464,126 @@ def system_health():
         except Exception:
             pass
 
-        # Health status levels
         def status(pct):
-            if pct < 60:   return 'good'
-            if pct < 85:   return 'warning'
+            if pct < 60:  return 'good'
+            if pct < 85:  return 'warning'
             return 'critical'
 
         return jsonify({
-            'cpu': {
-                'percent':   cpu_percent,
-                'per_core':  cpu_per_core,
-                'count':     cpu_count,
-                'freq_mhz':  round(cpu_freq.current, 0) if cpu_freq else None,
-                'status':    status(cpu_percent),
-            },
-            'ram': {
-                'percent':   ram.percent,
-                'used_gb':   ram_used_gb,
-                'total_gb':  ram_total_gb,
-                'status':    status(ram.percent),
-            },
-            'disk': {
-                'percent':   disk.percent,
-                'used_gb':   disk_used_gb,
-                'total_gb':  disk_total_gb,
-                'status':    status(disk.percent),
-            },
-            'network': {
-                'sent_mb':  net_sent_mb,
-                'recv_mb':  net_recv_mb,
-            },
-            'battery':   battery_info,
+            'cpu':     {'percent': cpu_percent, 'per_core': cpu_per_core, 'count': cpu_count, 'freq_mhz': round(cpu_freq.current, 0) if cpu_freq else None, 'status': status(cpu_percent)},
+            'ram':     {'percent': ram.percent,  'used_gb': ram_used_gb,  'total_gb': ram_total_gb,  'status': status(ram.percent)},
+            'disk':    {'percent': disk.percent, 'used_gb': disk_used_gb, 'total_gb': disk_total_gb, 'status': status(disk.percent)},
+            'network': {'sent_mb': net_sent_mb,  'recv_mb': net_recv_mb},
+            'battery': battery_info,
             'processes': processes,
         })
 
     except ImportError:
-        return jsonify({
-            'error': 'psutil not installed. Run: pip install psutil',
-            'cpu':   {'percent': 0, 'status': 'unknown'},
-            'ram':   {'percent': 0, 'status': 'unknown'},
-            'disk':  {'percent': 0, 'status': 'unknown'},
-        }), 200
-
+        return jsonify({'error': 'psutil not installed', 'cpu': {'percent': 0, 'status': 'unknown'}, 'ram': {'percent': 0, 'status': 'unknown'}, 'disk': {'percent': 0, 'status': 'unknown'}}), 200
     except Exception as e:
         print(f"[System Health Error] {e}")
         return jsonify({'error': str(e)}), 500
 
 
-# ─── NEW: TTS Voice Presets ─────────────────────────────────────────────────────
-
+# ─── TTS Voice Presets ─────────────────────────────────────────────────────────
 @app.route('/api/tts/voices', methods=['GET'])
 def tts_voices():
-    """
-    Returns available TTS voice presets for frontend selection.
-    These map to Web Speech API voice names when possible.
-    """
     voices = [
-        # Male voices
-        {'id': 'male_default',  'name': 'Alex',   'gender': 'male',   'accent': 'American',  'lang': 'en-US', 'preview': 'Hello! I am Alex, your Prime AI assistant.'},
-        {'id': 'male_uk',       'name': 'James',  'gender': 'male',   'accent': 'British',   'lang': 'en-GB', 'preview': 'Hello! I am James, your Prime AI assistant.'},
-        {'id': 'male_au',       'name': 'Jack',   'gender': 'male',   'accent': 'Australian','lang': 'en-AU', 'preview': 'Hello! I am Jack, your Prime AI assistant.'},
-        # Female voices
-        {'id': 'female_default','name': 'Aria',   'gender': 'female', 'accent': 'American',  'lang': 'en-US', 'preview': 'Hello! I am Aria, your Prime AI assistant.'},
-        {'id': 'female_uk',     'name': 'Sophie', 'gender': 'female', 'accent': 'British',   'lang': 'en-GB', 'preview': 'Hello! I am Sophie, your Prime AI assistant.'},
-        {'id': 'female_in',     'name': 'Priya',  'gender': 'female', 'accent': 'Indian',    'lang': 'en-IN', 'preview': 'Hello! I am Priya, your Prime AI assistant.'},
-        {'id': 'female_au',     'name': 'Emma',   'gender': 'female', 'accent': 'Australian','lang': 'en-AU', 'preview': 'Hello! I am Emma, your Prime AI assistant.'},
+        {'id': 'male_default',  'name': 'Alex',   'gender': 'male',   'accent': 'American',   'lang': 'en-US'},
+        {'id': 'male_uk',       'name': 'James',  'gender': 'male',   'accent': 'British',    'lang': 'en-GB'},
+        {'id': 'male_au',       'name': 'Jack',   'gender': 'male',   'accent': 'Australian', 'lang': 'en-AU'},
+        {'id': 'female_default','name': 'Aria',   'gender': 'female', 'accent': 'American',   'lang': 'en-US'},
+        {'id': 'female_uk',     'name': 'Sophie', 'gender': 'female', 'accent': 'British',    'lang': 'en-GB'},
+        {'id': 'female_in',     'name': 'Priya',  'gender': 'female', 'accent': 'Indian',     'lang': 'en-IN'},
+        {'id': 'female_au',     'name': 'Emma',   'gender': 'female', 'accent': 'Australian', 'lang': 'en-AU'},
     ]
     return jsonify({'voices': voices})
 
 
-# ─── NEW: Weekly Activity Summary ──────────────────────────────────────────────
-
+# ─── Weekly Activity Summary (FIXED — real data) ───────────────────────────────
 @app.route('/api/stats/weekly', methods=['GET'])
+@require_auth
 def weekly_stats():
-    """
-    Returns weekly usage statistics.
-    In production these would be pulled from a local DB.
-    Returning mock data structure for now.
-    """
+    """Returns real weekly usage stats from Supabase."""
+    from datetime import date, timedelta
+    user_id = g.user_id
+
+    today      = date.today()
+    week_start = today - timedelta(days=today.weekday())   # Monday
+    week_end   = week_start + timedelta(days=7)
+
+    # ── Fetch all sessions for this user ──────────────────────────────────────
+    sessions_res = supabase.table('chat_sessions') \
+        .select('id, title, created_at') \
+        .eq('user_id', user_id) \
+        .execute()
+    session_ids = [s['id'] for s in (sessions_res.data or [])]
+
+    messages_sent  = 0
+    code_generated = 0
+    daily_activity = [0] * 7   # Mon(0) … Sun(6)
+
+    if session_ids:
+        msgs_res = supabase.table('messages') \
+            .select('role, content, created_at') \
+            .in_('session_id', session_ids) \
+            .gte('created_at', week_start.isoformat()) \
+            .lt('created_at',  week_end.isoformat()) \
+            .execute()
+
+        for msg in (msgs_res.data or []):
+            if msg['role'] == 'user':
+                messages_sent += 1
+                d   = date.fromisoformat(msg['created_at'][:10])
+                dow = d.weekday()        # Mon=0 … Sun=6
+                daily_activity[dow] += 1
+            elif msg['role'] == 'assistant' and '```' in (msg.get('content') or ''):
+                code_generated += 1
+
+    # ── Fetch stored weekly_stats row for focus minutes / files ───────────────
+    stat_res = supabase.table('weekly_stats') \
+        .select('*') \
+        .eq('user_id',    user_id) \
+        .eq('week_start', week_start.isoformat()) \
+        .execute()
+    stat_row = stat_res.data[0] if stat_res.data else {}
+
+    total_focus_minutes = stat_row.get('total_focus_minutes', 0)
+    files_managed       = stat_row.get('files_managed',       0)
+
+    # ── Top topics from session titles this week ──────────────────────────────
+    week_sessions = [
+        s for s in (sessions_res.data or [])
+        if s.get('created_at', '')[:10] >= week_start.isoformat()
+    ]
+    top_topics = list({
+        s['title'] for s in week_sessions
+        if s.get('title') and s['title'] != 'New Chat'
+    })[:5]
+    if not top_topics:
+        top_topics = ['Chat', 'Code', 'Study']
+
     return jsonify({
-        'messages_sent':       42,
-        'code_generated':       7,
-        'files_managed':        3,
-        'study_sessions':       5,
-        'total_focus_minutes': 125,
-        'system_alerts':        2,
-        'top_topics': ['Python debugging', 'File organization', 'Study plans'],
-        'daily_activity': [4, 8, 3, 7, 9, 6, 5],  # Sun–Sat
+        'messages_sent':       messages_sent,
+        'code_generated':      code_generated,
+        'files_managed':       files_managed,
+        'total_focus_minutes': total_focus_minutes,
+        'daily_activity':      daily_activity,
+        'top_topics':          top_topics,
     })
 
-# ─── Health Check ──────────────────────────────────────────────────────────────
 
+# ─── Health Check ──────────────────────────────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health():
-    """
-    Health check endpoint.
-    """
     return jsonify({'status': 'ok', 'message': 'Prime AI backend is running'})
 
-# ─── Auth: Cookie config ───────────────────────────────────────────────────────
+
+# ─── Auth routes ───────────────────────────────────────────────────────────────
 COOKIE_NAME     = "prime_token"
-COOKIE_MAX_AGE  = 60 * 60 * int(os.getenv("JWT_EXPIRE_HOURS", 168))  # seconds
+COOKIE_MAX_AGE  = 60 * 60 * int(os.getenv("JWT_EXPIRE_HOURS", 168))
 IS_DEV          = os.getenv("FLASK_ENV") == "development"
 
-
-# def _set_auth_cookie(response, token: str):
-#     """Attach the JWT as an httpOnly, SameSite=Lax cookie."""
-#     response.set_cookie(
-#         COOKIE_NAME,
-#         token,
-#         max_age=COOKIE_MAX_AGE,
-#         httponly=True,          # JS cannot read this — XSS protection
-#         samesite="None",
-#         # samesite="Lax",
-#         secure=False,      # HTTPS only in production
-#         # secure=not IS_DEV,      # HTTPS only in production
-#         path="/",
-#     )
-#     return response
-
-
-# ─── POST /api/auth/register ───────────────────────────────────────────────────
-# DELETE the entire _set_auth_cookie function and COOKIE_NAME / COOKIE_MAX_AGE / IS_DEV constants
-# Replace both auth routes' cookie calls with direct JSON:
 
 @app.route("/api/auth/register", methods=["POST"])
 def auth_register():
@@ -535,12 +605,7 @@ def auth_register():
     if "error" in result:
         return jsonify(result), 409
 
-    # Return token in body — frontend stores in localStorage
-    return jsonify({
-        "message": "Registered successfully.",
-        "user":    result["user"],
-        "token":   result["token"],        # ← token in body now
-    }), 201
+    return jsonify({"message": "Registered successfully.", "user": result["user"], "token": result["token"]}), 201
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -559,28 +624,17 @@ def auth_login():
     if "error" in result:
         return jsonify(result), 401
 
-    return jsonify({
-        "message": "Logged in successfully.",
-        "user":    result["user"],
-        "token":   result["token"],        # ← token in body now
-    }), 200
+    return jsonify({"message": "Logged in successfully.", "user": result["user"], "token": result["token"]}), 200
 
 
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
-    # Nothing to clear server-side — client drops the token
     return jsonify({"message": "Logged out."}), 200
 
 
-# ─── GET /api/auth/me  (used on page load to restore session) ─────────────────
 @app.route("/api/auth/me", methods=["GET"])
 @require_auth
 def auth_me():
-    """
-    Frontend calls this on every page load.
-    If the cookie is valid → returns user object.
-    If expired/missing → 401 → frontend shows sign-in prompt.
-    """
     user = get_user_by_id(g.user_id)
     if not user:
         return jsonify({"error": "User not found."}), 404
